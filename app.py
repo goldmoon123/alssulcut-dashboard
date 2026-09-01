@@ -40,13 +40,32 @@ KST = ZoneInfo("Asia/Seoul")
 
 load_dotenv()
 
-# localhost 개발용
-os.environ["OAUTHLIB_INSECURE_TRANSPORT"] = "1"
 
-CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
-CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET")
+def get_config(name, default=None):
+    value = os.getenv(name)
+    if value:
+        return value
 
-REDIRECT_URI = "https://alssulcut-dashboard-ukejv5o8kkinevripbvu97.streamlit.app"
+    try:
+        return st.secrets.get(name, default)
+    except Exception:
+        return default
+
+
+CLIENT_ID = get_config("GOOGLE_CLIENT_ID")
+CLIENT_SECRET = get_config("GOOGLE_CLIENT_SECRET")
+
+# 로컬에서는 localhost, 배포된 Streamlit에서는 Secrets의 주소 사용
+REDIRECT_URI = get_config(
+    "GOOGLE_REDIRECT_URI",
+    "http://localhost:8501",
+)
+
+# HTTP 허용은 localhost 개발 때만 사용
+if REDIRECT_URI.startswith("http://localhost"):
+    os.environ["OAUTHLIB_INSECURE_TRANSPORT"] = "1"
+else:
+    os.environ.pop("OAUTHLIB_INSECURE_TRANSPORT", None)
 
 SCOPES = [
     "https://www.googleapis.com/auth/youtube.readonly",
@@ -57,6 +76,96 @@ st.set_page_config(
     page_title="알쓸컷 쇼츠 분석기",
     page_icon="📊",
     layout="wide",
+)
+
+# =========================================================
+# 모바일 화면 최적화
+# =========================================================
+st.markdown(
+    """
+    <style>
+    @media (max-width: 768px) {
+        .block-container {
+            padding-top: 1.1rem !important;
+            padding-left: 0.85rem !important;
+            padding-right: 0.85rem !important;
+            padding-bottom: 4rem !important;
+        }
+
+        h1 { font-size: 2rem !important; line-height: 1.18 !important; }
+        h2 { font-size: 1.55rem !important; line-height: 1.2 !important; }
+        h3 { font-size: 1.25rem !important; line-height: 1.2 !important; }
+
+        [data-testid="stMetric"] {
+            padding: 0.45rem 0.55rem !important;
+            border: 1px solid rgba(128,128,128,.18);
+            border-radius: 12px;
+            min-height: 92px;
+        }
+        [data-testid="stMetricLabel"] { font-size: 0.82rem !important; }
+        [data-testid="stMetricValue"] { font-size: 1.65rem !important; }
+        [data-testid="stMetricDelta"] { font-size: 0.75rem !important; }
+
+        /* 4칸 지표는 모바일에서 2 x 2 */
+        [data-testid="stHorizontalBlock"]:has(> div:nth-child(4)):not(:has(> div:nth-child(5))) {
+            display: grid !important;
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+            gap: 0.55rem !important;
+        }
+
+        /* 5칸 현황도 너무 길어지지 않게 2열 */
+        [data-testid="stHorizontalBlock"]:has(> div:nth-child(5)):not(:has(> div:nth-child(6))) {
+            display: grid !important;
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+            gap: 0.55rem !important;
+        }
+
+        /* 달력: 7칸을 무조건 한 줄에 유지 */
+        [data-testid="stHorizontalBlock"]:has(> div:nth-child(7)):not(:has(> div:nth-child(8))) {
+            display: grid !important;
+            grid-template-columns: repeat(7, minmax(0, 1fr)) !important;
+            gap: 3px !important;
+        }
+        [data-testid="stHorizontalBlock"]:has(> div:nth-child(7)):not(:has(> div:nth-child(8))) > div {
+            min-width: 0 !important;
+            width: auto !important;
+        }
+        [data-testid="stHorizontalBlock"]:has(> div:nth-child(7)):not(:has(> div:nth-child(8))) button {
+            min-height: 58px !important;
+            padding: 3px 1px !important;
+            border-radius: 7px !important;
+        }
+        [data-testid="stHorizontalBlock"]:has(> div:nth-child(7)):not(:has(> div:nth-child(8))) button p {
+            font-size: 0.64rem !important;
+            line-height: 1.15 !important;
+            white-space: pre-line !important;
+        }
+
+        /* 달력 이전/현재/다음 3칸은 가로 유지 */
+        [data-testid="stHorizontalBlock"]:has(> div:nth-child(3)):not(:has(> div:nth-child(4))) {
+            flex-wrap: nowrap !important;
+            gap: 0.35rem !important;
+        }
+        [data-testid="stHorizontalBlock"]:has(> div:nth-child(3)):not(:has(> div:nth-child(4))) > div {
+            min-width: 0 !important;
+        }
+
+        .stButton > button {
+            font-size: 0.82rem;
+        }
+
+        [data-testid="stVegaLiteChart"],
+        [data-testid="stArrowVegaLiteChart"] {
+            margin-top: -0.25rem !important;
+            margin-bottom: 0.5rem !important;
+        }
+
+        hr { margin: 1.1rem 0 !important; }
+        p { line-height: 1.45; }
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
 )
 
 st.title("📊 알쓸컷 쇼츠 분석기")
