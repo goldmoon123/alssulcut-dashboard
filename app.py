@@ -160,8 +160,22 @@ st.markdown(
             margin-bottom: 0.5rem !important;
         }
 
-        hr { margin: 1.1rem 0 !important; }
-        p { line-height: 1.45; }
+        hr { margin: 0.85rem 0 !important; }
+        p { line-height: 1.38; }
+
+        /* 모바일에서 섹션을 조금 더 촘촘하게 */
+        [data-testid="stVerticalBlock"] { gap: 0.65rem !important; }
+        [data-testid="stImage"] img { border-radius: 10px !important; }
+        [data-testid="stDataFrame"] { font-size: 0.78rem !important; }
+        [data-baseweb="tab-list"] { gap: 0.15rem !important; }
+        [data-baseweb="tab"] { padding-left: 0.45rem !important; padding-right: 0.45rem !important; }
+
+        /* 긴 metric 값이 ... 으로 잘리지 않도록 */
+        [data-testid="stMetricValue"] > div {
+            overflow: visible !important;
+            text-overflow: clip !important;
+            white-space: nowrap !important;
+        }
     }
     </style>
     """,
@@ -673,7 +687,7 @@ st.subheader(
 )
 
 
-c1, c2, c3 = st.columns(3)
+c1, c2, c3, _top_blank = st.columns(4)
 
 c1.metric(
     "구독자",
@@ -1066,10 +1080,10 @@ if daily_data:
     daily_df.index = [dt.strftime("%m/%d") for dt in daily_df.index]
 
     st.subheader("📈 일별 조회수")
-    st.line_chart(daily_df[["views"]], use_container_width=True)
+    st.line_chart(daily_df[["views"]], use_container_width=True, height=260)
 
     st.subheader("👤 일별 순구독자")
-    st.bar_chart(daily_df[["net_subscribers"]], use_container_width=True)
+    st.bar_chart(daily_df[["net_subscribers"]], use_container_width=True, height=260)
 
 else:
     st.info("선택한 기간에 일별 Analytics 데이터가 없습니다.")
@@ -1643,7 +1657,7 @@ try:
     st.subheader(f"채널 상태: {channel_state}")
     st.write(channel_message)
 
-    dc1, dc2, dc3 = st.columns(3)
+    dc1, dc2, dc3, _diag_blank = st.columns(4)
     dc1.metric(
         "최근 7일 조회수",
         f"{recent7['views']:,}회",
@@ -1734,6 +1748,7 @@ if eligible_videos:
             diagnosis_table,
             use_container_width=True,
             hide_index=True,
+            height=300,
         )
 
 st.divider()
@@ -1758,9 +1773,9 @@ def render_ranked_videos(ranked, metric_name, metric_formatter):
         col_img, col_info = st.columns([1, 5])
         with col_img:
             if video["thumbnail"]:
-                st.image(video["thumbnail"], width=160)
+                st.image(video["thumbnail"], width=125)
         with col_info:
-            st.markdown(f"### {rank}위 · {video['title']}")
+            st.markdown(f"**{rank}위 · {video['title']}**")
             score_value = video.get("performance_score")
 
             if score_value is None:
@@ -1927,6 +1942,7 @@ with st.expander("전체 영상 표 펼쳐보기", expanded=False):
         df,
         use_container_width=True,
         hide_index=True,
+        height=340,
     )
 
 
