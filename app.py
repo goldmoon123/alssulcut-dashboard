@@ -2,7 +2,9 @@ import os
 from datetime import date, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 from io import BytesIO
+from openpyxl.worksheet.table import Table, TableStyleInfo
 import calendar
+import re
 
 import pandas as pd
 import streamlit as st
@@ -1106,6 +1108,24 @@ else:
 st.divider()
 
 
+def add_excel_table(ws, table_name):
+    """Excel 실제 표(Table) + 필터/정렬."""
+    if ws.max_row < 2 or ws.max_column < 1:
+        return
+    safe_name = re.sub(r"[^A-Za-z0-9_]", "_", table_name)
+    if not safe_name or safe_name[0].isdigit():
+        safe_name = "T_" + safe_name
+    table = Table(displayName=safe_name, ref=ws.dimensions)
+    table.tableStyleInfo = TableStyleInfo(
+        name="TableStyleMedium2",
+        showFirstColumn=False,
+        showLastColumn=False,
+        showRowStripes=True,
+        showColumnStripes=False,
+    )
+    ws.add_table(table)
+
+
 # =========================================================
 # 17. 월간 성과 달력
 # =========================================================
@@ -1353,6 +1373,9 @@ def make_monthly_excel(month_daily_rows, month_value, all_public_videos):
 
             if "업로드 영상" in header_map:
                 ws.column_dimensions[header_map["업로드 영상"]].width = 48
+
+        for idx, sheet_name in enumerate(writer.book.sheetnames, start=1):
+            add_excel_table(writer.book[sheet_name], f"MonthlyTable_{idx}")
 
     output.seek(0)
     return output.getvalue()
@@ -1843,10 +1866,10 @@ st.divider()
 
 
 # =========================================================
-# 20. 자동 성과진단 V2
+# 20. 자동 성과진단 V3
 # =========================================================
 
-st.header("🚦 자동 성과진단 V2")
+st.header("🚦 자동 성과진단 V3")
 st.caption(
     "※ 성과점수는 YouTube 공식 점수가 아니라, 현재 채널의 평가 가능한 공개 영상끼리 "
     "조회수·평균 시청률·좋아요율·구독전환율을 비교한 '채널 내 상대점수'입니다. "
@@ -1919,7 +1942,7 @@ try:
     )
 
 except Exception as e:
-    st.warning("채널 상태 진단을 불러오지 못했습니다.")
+    st.info("최근 채널 추세 데이터가 일시적으로 지연되어 영상별 성과를 기준으로 진단합니다.")
     with st.expander("진단 오류 보기"):
         st.code(str(e))
 
@@ -1931,96 +1954,95 @@ if eligible_videos:
         reverse=True,
     )
 
-    best_diagnosis = diagnosed[0]
-    weakest_diagnosis = diagnosed[-1]
+    data_shortage_count = max(0, len(public_videos) - len(eligible_videos))
+    st.caption(
+        f"분석 가능 {len(eligible_videos)}개 · 데이터 부족 {data_shortage_count}개 · "
+        "조회수 100회 미만 또는 Analytics 데이터가 부족한 영상은 평가를 보류합니다."
+    )
+
+    avg_ret_diag = sum(v.get("avg_percentage", 0) for v in eligible_videos) / len(eligible_videos)
+    avg_like_diag = sum(v.get("like_rate", 0) for v in eligible_videos) / len(eligible_videos)
+    avg_sub_diag = sum(v.get("sub_conversion_rate", 0) for v in eligible_videos) / len(eligible_videos)
+
     views_leader = max(eligible_videos, key=lambda x: x.get("views", 0))
     retention_leader = max(eligible_videos, key=lambda x: x.get("avg_percentage", 0))
-    subs_leader = max(eligible_videos, key=lambda x: x.get("sub_conversion_rate", 0))
     likes_leader = max(eligible_videos, key=lambda x: x.get("like_rate", 0))
+    subs_leader = max(eligible_videos, key=lambda x: x.get("sub_conversion_rate", 0))
 
-    # 핵심 진단은 짧게, 세부 진단은 아래에서 펼쳐보게 구성
-    best_col, weak_col = st.columns(2)
-
-    with best_col:
-        st.subheader("🏅 종합 성과 1위")
-        st.markdown(
-            f"**{best_diagnosis['title']}**  \n"
-            f"{best_diagnosis['performance_grade']} · "
-            f"**{best_diagnosis['performance_score']}점**"
+    st.markdown("#### 📌 현재 채널 상태")
+    if avg_ret_diag >= 90:
+        st.info(
+            f"분석 가능한 영상의 평균 시청률이 {avg_ret_diag:.1f}%로 시청 유지가 강한 편입니다. "
+            "조회수와 구독 전환까지 함께 높은 영상의 공통점을 찾아 반복해보세요."
         )
-        strengths = best_diagnosis.get("diagnosis_strengths", [])
-        if strengths:
-            st.write("강점: " + ", ".join(strengths))
+    elif avg_ret_diag >= 70:
+        st.info(
+            f"평균 시청률 {avg_ret_diag:.1f}%로 기본 시청 유지는 확보되고 있습니다. "
+            "이제 조회수와 구독 전환이 함께 높은 영상의 공통점을 찾는 단계입니다."
+        )
+    else:
+        st.info(
+            f"평균 시청률이 {avg_ret_diag:.1f}%입니다. "
+            "다음 영상에서는 초반 이탈과 영상 길이를 먼저 점검하는 것이 좋습니다."
+        )
+
+    good_col, improve_col = st.columns(2)
+
+    with good_col:
+        st.markdown("#### ✅ 잘하고 있는 점")
         st.write(
-            f"👁 {best_diagnosis['views']:,}회 · "
-            f"📊 {best_diagnosis['avg_percentage']:.1f}% · "
-            f"👍 {best_diagnosis['like_rate']:.2f}% · "
-            f"👤 {best_diagnosis['sub_conversion_rate']:.3f}%"
+            f"**시청 유지:** `{retention_leader['title']}`이 "
+            f"평균 시청률 **{retention_leader.get('avg_percentage', 0):.1f}%**로 가장 강합니다."
         )
-
-    with weak_col:
-        st.subheader("🛠️ 개선 우선 영상")
-        st.markdown(
-            f"**{weakest_diagnosis['title']}**  \n"
-            f"{weakest_diagnosis['performance_grade']} · "
-            f"**{weakest_diagnosis['performance_score']}점**"
-        )
-        weaknesses = weakest_diagnosis.get("diagnosis_weaknesses", [])
-        if weaknesses:
-            st.write("우선 점검: " + ", ".join(weaknesses))
         st.write(
-            f"👁 {weakest_diagnosis['views']:,}회 · "
-            f"📊 {weakest_diagnosis['avg_percentage']:.1f}% · "
-            f"👍 {weakest_diagnosis['like_rate']:.2f}% · "
-            f"👤 {weakest_diagnosis['sub_conversion_rate']:.3f}%"
+            f"**조회수:** `{views_leader['title']}`이 "
+            f"**{views_leader.get('views', 0):,}회**로 가장 높습니다."
         )
 
-    st.markdown("#### 핵심 강점별 1위")
-    q1, q2 = st.columns(2)
-    q3, q4 = st.columns(2)
+    with improve_col:
+        st.markdown("#### ⚠️ 가장 먼저 개선할 점")
+        if avg_ret_diag < 70:
+            st.write("평균 시청률이 상대적으로 약합니다. **첫 장면·첫 문장·영상 길이**를 우선 점검하세요.")
+        elif avg_sub_diag < 0.15:
+            st.write("조회수 대비 구독 전환이 상대적으로 약합니다. **주제 일관성과 구독할 이유**가 전달되는지 점검하세요.")
+        elif avg_like_diag < 1.0:
+            st.write("조회수 대비 좋아요 반응이 상대적으로 약합니다. **결론의 만족도와 반응 포인트**를 점검하세요.")
+        else:
+            st.write("큰 약점은 두드러지지 않습니다. 잘된 영상의 **주제·길이·전개 속도**를 반복 검증하는 것이 좋습니다.")
 
-    q1.metric(
-        "👁 조회수 강자",
-        f"{views_leader['views']:,}회",
-        views_leader["title"][:24],
-        delta_color="off",
+    st.markdown("#### 💡 다음 영상에서 해볼 것")
+    st.write(f"1. `{retention_leader['title']}`의 **길이와 전개 속도**를 참고하세요.")
+    st.write(
+        f"2. `{likes_leader['title']}`은 좋아요율 **{likes_leader.get('like_rate', 0):.2f}%**로 가장 높습니다. "
+        "시청자가 반응한 소재·결론 방식을 비교해보세요."
     )
-    q2.metric(
-        "⏱️ 시청 유지 강자",
-        f"{retention_leader['avg_percentage']:.1f}%",
-        retention_leader["title"][:24],
-        delta_color="off",
-    )
-    q3.metric(
-        "👤 구독 전환 강자",
-        f"{subs_leader['sub_conversion_rate']:.3f}%",
-        subs_leader["title"][:24],
-        delta_color="off",
-    )
-    q4.metric(
-        "👍 반응률 강자",
-        f"{likes_leader['like_rate']:.2f}%",
-        likes_leader["title"][:24],
-        delta_color="off",
+    st.write(
+        f"3. `{subs_leader['title']}`은 구독전환율 **{subs_leader.get('sub_conversion_rate', 0):.3f}%**로 가장 높습니다. "
+        "채널의 다른 영상도 보고 싶게 만든 요소가 무엇인지 비교해보세요."
     )
 
-    with st.expander("🔬 상세 성과진단 보기", expanded=False):
-        st.markdown("**왜 잘됐는지 / 어디를 점검할지 지표별로 나눠서 봅니다.**")
+    st.markdown("#### 🎯 다음 목표")
+    target_ret = min(120.0, max(avg_ret_diag + 5, 80.0))
+    target_like = max(avg_like_diag + 0.20, avg_like_diag * 1.10)
+    target_sub = max(avg_sub_diag + 0.03, avg_sub_diag * 1.10)
 
+    g1, g2, g3 = st.columns(3)
+    g1.metric("평균 시청률", f"{avg_ret_diag:.1f}% → {target_ret:.1f}%")
+    g2.metric("좋아요율", f"{avg_like_diag:.2f}% → {target_like:.2f}%")
+    g3.metric("구독전환율", f"{avg_sub_diag:.3f}% → {target_sub:.3f}%")
+    st.caption("목표치는 현재 평균보다 한 단계 높은 내부 참고 목표이며 YouTube 공식 권장 기준은 아닙니다.")
+
+    with st.expander("🔬 영상별 상세 분석 보기", expanded=False):
         detail_rows = []
         for video in diagnosed:
             detail_rows.append({
                 "영상": video["title"],
-                "종합점수": video.get("performance_score", 0),
+                "참고점수": video.get("performance_score", 0),
                 "등급": video.get("performance_grade", "-"),
                 "조회수": video.get("views", 0),
                 "평균 시청시간": f"{video.get('avg_duration', 0):.1f}초",
                 "평균 시청률": f"{video.get('avg_percentage', 0):.1f}%",
-                "좋아요": video.get("likes", 0),
                 "좋아요율": f"{video.get('like_rate', 0):.2f}%",
-                "댓글": video.get("comments", 0),
-                "공유": video.get("shares", 0),
-                "순구독자": video.get("net_subs", 0),
                 "구독전환율": f"{video.get('sub_conversion_rate', 0):.3f}%",
                 "강점": ", ".join(video.get("diagnosis_strengths", [])) or "-",
                 "점검": ", ".join(video.get("diagnosis_weaknesses", [])) or "-",
@@ -2032,34 +2054,9 @@ if eligible_videos:
             hide_index=True,
             height=340,
         )
-
         st.caption(
-            "종합점수만 보는 것보다 조회수·시청 유지·반응·구독 전환을 따로 보면 "
-            "영상의 강점과 약점을 더 정확히 구분할 수 있습니다."
-        )
-
-    with st.expander(
-        "📋 모든 공개 영상 성과점수 보기",
-        expanded=False,
-    ):
-        diagnosis_table = pd.DataFrame([
-            {
-                "영상": video["title"],
-                "점수": video.get("performance_score", 0),
-                "등급": video.get("performance_grade", "-"),
-                "조회수": video["views"],
-                "평균 시청률": f"{video['avg_percentage']:.1f}%",
-                "좋아요율": f"{video['like_rate']:.2f}%",
-                "구독전환율": f"{video['sub_conversion_rate']:.3f}%",
-            }
-            for video in diagnosed
-        ])
-
-        st.dataframe(
-            diagnosis_table,
-            use_container_width=True,
-            hide_index=True,
-            height=300,
+            "참고점수는 여러 지표를 한눈에 비교하기 위한 내부 참고값입니다. "
+            "실제 판단은 조회수·시청률·좋아요율·구독전환율을 함께 보세요."
         )
 else:
     st.info(
@@ -2456,6 +2453,9 @@ def make_excel_file(primary_df, primary_sheet_name):
                         col = header_map[header]
                         for row in range(2, ws.max_row + 1):
                             ws[f"{col}{row}"].number_format = "@"
+
+        for idx, sheet_name in enumerate(writer.book.sheetnames, start=1):
+            add_excel_table(writer.book[sheet_name], f"VideoTable_{idx}")
 
     output.seek(0)
     return output.getvalue()
