@@ -1,6 +1,7 @@
 import os
 from datetime import date, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
+from io import BytesIO
 import calendar
 
 import pandas as pd
@@ -161,7 +162,8 @@ st.markdown(
         }
 
         hr { margin: 0.85rem 0 !important; }
-        p { line-height: 1.38; }
+        p { line-height: 1.42; }
+        .stCaption, [data-testid="stCaptionContainer"] { font-size: 0.82rem !important; }
 
         /* 모바일에서 섹션을 조금 더 촘촘하게 */
         [data-testid="stVerticalBlock"] { gap: 0.65rem !important; }
@@ -1935,6 +1937,195 @@ for video in videos:
 df = pd.DataFrame(
     table_data
 )
+
+
+# =========================================================
+# 22-1. 영상 검색 / 조회수 필터
+# =========================================================
+
+st.markdown("### 🔎 영상 검색 / 조회수 필터")
+st.caption(
+    "조회수 기준으로 잘된 영상·아쉬운 영상을 따로 모아볼 수 있습니다. "
+    "필터 결과만 엑셀로 내려받는 것도 가능합니다."
+)
+
+filter_mode = st.radio(
+    "조회수 조건",
+    ["전체", "이상", "이하", "범위"],
+    horizontal=True,
+    key="views_filter_mode",
+)
+
+filter_min_views = 0
+filter_max_views = 0
+
+if filter_mode in ["이상", "이하"]:
+    filter_views = st.number_input(
+        "기준 조회수",
+        min_value=0,
+        value=5000,
+        step=500,
+        key="views_filter_value",
+    )
+elif filter_mode == "범위":
+    range_c1, range_c2 = st.columns(2)
+    with range_c1:
+        filter_min_views = st.number_input(
+            "최소 조회수",
+            min_value=0,
+            value=1000,
+            step=500,
+            key="views_filter_min",
+        )
+    with range_c2:
+        filter_max_views = st.number_input(
+            "최대 조회수",
+            min_value=0,
+            value=10000,
+            step=500,
+            key="views_filter_max",
+        )
+
+filter_c1, filter_c2 = st.columns(2)
+
+with filter_c1:
+    status_options = ["전체"] + sorted(df["상태"].dropna().astype(str).unique().tolist())
+    filter_status = st.selectbox(
+        "공개 상태",
+        status_options,
+        key="video_status_filter",
+    )
+
+with filter_c2:
+    title_query = st.text_input(
+        "제목 검색",
+        placeholder="예: 비버, 화산, 교통사고",
+        key="video_title_filter",
+    )
+
+filtered_df = df.copy()
+
+if filter_mode == "이상":
+    filtered_df = filtered_df[filtered_df["조회수"] >= int(filter_views)]
+elif filter_mode == "이하":
+    filtered_df = filtered_df[filtered_df["조회수"] <= int(filter_views)]
+elif filter_mode == "범위":
+    low = min(int(filter_min_views), int(filter_max_views))
+    high = max(int(filter_min_views), int(filter_max_views))
+    filtered_df = filtered_df[
+        (filtered_df["조회수"] >= low)
+        & (filtered_df["조회수"] <= high)
+    ]
+
+if filter_status != "전체":
+    filtered_df = filtered_df[filtered_df["상태"] == filter_status]
+
+if title_query.strip():
+    filtered_df = filtered_df[
+        filtered_df["제목"].astype(str).str.contains(
+            title_query.strip(),
+            case=False,
+            na=False,
+        )
+    ]
+
+result_count = len(filtered_df)
+
+if result_count:
+    result_avg_views = int(filtered_df["조회수"].mean())
+    result_max_views = int(filtered_df["조회수"].max())
+else:
+    result_avg_views = 0
+    result_max_views = 0
+
+fc1, fc2, fc3 = st.columns(3)
+fc1.metric("검색된 영상", f"{result_count:,}개")
+fc2.metric("평균 조회수", f"{result_avg_views:,}회")
+fc3.metric("최고 조회수", f"{result_max_views:,}회")
+
+with st.expander(
+    f"필터 결과 영상 보기 ({result_count:,}개)",
+    expanded=(result_count <= 10 and result_count > 0),
+):
+    if filtered_df.empty:
+        st.info("조건에 맞는 영상이 없습니다.")
+    else:
+        st.dataframe(
+            filtered_df,
+            use_container_width=True,
+            hide_index=True,
+            height=min(420, 90 + (len(filtered_df) * 34)),
+        )
+
+
+# =========================================================
+# 22-2. 엑셀 다운로드
+# =========================================================
+
+def make_excel_file(all_videos_df, filtered_videos_df):
+    output = BytesIO()
+
+    summary_rows = [
+        ["채널명", channel_info.get("title", "")],
+        ["구독자", channel_info.get("subscribers", 0)],
+        ["채널 총 조회수", channel_info.get("views", 0)],
+        ["전체 감지 영상", len(videos)],
+        ["공개 영상", len(public_videos)],
+        ["예약 영상", len(scheduled_videos)],
+        ["필터 결과 영상", len(filtered_videos_df)],
+        ["생성 시각", datetime.now(KST).strftime("%Y-%m-%d %H:%M:%S KST")],
+    ]
+    summary_df = pd.DataFrame(summary_rows, columns=["항목", "값"])
+
+    with pd.ExcelWriter(output, engine="openpyxl") as writer:
+        summary_df.to_excel(writer, sheet_name="채널 요약", index=False)
+        all_videos_df.to_excel(writer, sheet_name="전체 영상", index=False)
+        filtered_videos_df.to_excel(writer, sheet_name="필터 결과", index=False)
+
+        # 보기 편하게 기본 열 너비 자동 조절
+        for sheet_name in writer.book.sheetnames:
+            ws = writer.book[sheet_name]
+            for column_cells in ws.columns:
+                max_length = 0
+                column_letter = column_cells[0].column_letter
+                for cell in column_cells:
+                    try:
+                        cell_length = len(str(cell.value)) if cell.value is not None else 0
+                        max_length = max(max_length, cell_length)
+                    except Exception:
+                        pass
+                ws.column_dimensions[column_letter].width = min(max(max_length + 2, 10), 45)
+
+            ws.freeze_panes = "A2"
+            ws.auto_filter.ref = ws.dimensions
+
+    output.seek(0)
+    return output.getvalue()
+
+
+excel_bytes = make_excel_file(df, filtered_df)
+
+st.markdown("### 📥 엑셀 다운로드")
+download_c1, download_c2 = st.columns(2)
+
+with download_c1:
+    st.download_button(
+        "📥 전체 영상 엑셀",
+        data=make_excel_file(df, df),
+        file_name=f"shorts_all_videos_{today.strftime('%Y%m%d')}.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        use_container_width=True,
+    )
+
+with download_c2:
+    st.download_button(
+        f"📥 필터 결과 엑셀 ({result_count}개)",
+        data=excel_bytes,
+        file_name=f"shorts_filtered_videos_{today.strftime('%Y%m%d')}.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        use_container_width=True,
+        disabled=result_count == 0,
+    )
 
 
 with st.expander("전체 영상 표 펼쳐보기", expanded=False):
