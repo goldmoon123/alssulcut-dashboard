@@ -1922,70 +1922,158 @@ st.divider()
 # 20. 자동 성과진단 V4
 # =========================================================
 
-st.header("🧠 자동 성과진단 V4")
+st.header("🧠 자동 성과진단 V5")
 st.caption(
     "복잡한 점수보다 '지금 뭘 봐야 하는지'를 먼저 보여줍니다. "
     "조회수 100회 이상이고 Analytics가 집계된 공개 영상만 비교하며, "
     "원인을 단정하지 않고 현재 데이터에서 보이는 강점·약점을 기준으로 진단합니다."
 )
 
-# 최근 채널 추세
-recent_trend_text = None
-recent_trend_state = "⚪ 추세 확인 중"
+# 채널 추세: 사용자가 기간을 고르고, 직전 동일 기간과 실제 수치로 비교
+st.markdown("### 📈 채널 추세")
+trend_option = st.selectbox(
+    "분석 기간",
+    ["최근 7일", "최근 14일", "최근 28일", "직접 선택"],
+    key="trend_period_option",
+)
+
+trend_last_day = today - timedelta(days=1)  # 오늘은 Analytics 집계 지연 때문에 제외
+
+if trend_option == "최근 7일":
+    trend_end = trend_last_day
+    trend_start = trend_end - timedelta(days=6)
+elif trend_option == "최근 14일":
+    trend_end = trend_last_day
+    trend_start = trend_end - timedelta(days=13)
+elif trend_option == "최근 28일":
+    trend_end = trend_last_day
+    trend_start = trend_end - timedelta(days=27)
+else:
+    td1, td2 = st.columns(2)
+    with td1:
+        trend_start = st.date_input(
+            "시작일",
+            value=trend_last_day - timedelta(days=6),
+            max_value=trend_last_day,
+            key="trend_custom_start",
+        )
+    with td2:
+        trend_end = st.date_input(
+            "종료일",
+            value=trend_last_day,
+            max_value=trend_last_day,
+            key="trend_custom_end",
+        )
+
+if trend_start > trend_end:
+    st.warning("채널 추세의 시작일이 종료일보다 늦습니다.")
+    trend_start = trend_end
+
+trend_days = (trend_end - trend_start).days + 1
+prev7_end = trend_start - timedelta(days=1)
+prev7_start = prev7_end - timedelta(days=trend_days - 1)
 recent7 = None
 prev7 = None
+recent_trend_text = None
+recent_trend_state = "⚪ 확인 중"
+
+def _upload_count_between(start_d, end_d):
+    count = 0
+    for _video in public_videos:
+        _raw = _video.get("published_raw")
+        if not _raw:
+            continue
+        try:
+            _d = datetime.fromisoformat(_raw.replace("Z", "+00:00")).astimezone(KST).date()
+            if start_d <= _d <= end_d:
+                count += 1
+        except Exception:
+            pass
+    return count
+
+def _change_text(current, previous, suffix="%"):
+    change = calculate_change(current, previous)
+    if change is None:
+        return "비교 불가"
+    arrow = "▲" if change > 0 else ("▼" if change < 0 else "→")
+    return f"{arrow} {change:+.1f}{suffix}"
 
 try:
-    recent7_end = today - timedelta(days=1)
-    recent7_start = recent7_end - timedelta(days=6)
+    recent7 = get_period_summary(yt_analytics, trend_start, trend_end)
+    prev7 = get_period_summary(yt_analytics, prev7_start, prev7_end)
 
-    recent7 = get_period_summary(
-        yt_analytics,
-        recent7_start,
-        recent7_end,
-    )
-
-    prev7_start, prev7_end = get_previous_period(
-        recent7_start,
-        recent7_end,
-    )
-
-    prev7 = get_period_summary(
-        yt_analytics,
-        prev7_start,
-        prev7_end,
-    )
-
-    view_change = calculate_change(
-        recent7["views"],
-        prev7["views"],
-    )
+    recent_uploads = _upload_count_between(trend_start, trend_end)
+    previous_uploads = _upload_count_between(prev7_start, prev7_end)
+    view_change = calculate_change(recent7["views"], prev7["views"])
 
     if recent7["views"] == 0:
         recent_trend_state = "⚪ 집계 대기"
-        recent_trend_text = "최근 7일 데이터가 아직 충분히 집계되지 않았습니다."
     elif view_change is None:
-        recent_trend_state = "🟢 성장 시작"
-        recent_trend_text = "이전 7일 조회수가 거의 없어 최근 성과가 새로 잡히고 있습니다."
-    elif view_change >= 25:
-        recent_trend_state = "🔥 강한 상승"
-        recent_trend_text = f"최근 7일 조회수가 이전 7일보다 {view_change:+.1f}% 늘었습니다."
-    elif view_change >= 5:
-        recent_trend_state = "🟢 상승"
-        recent_trend_text = f"최근 7일 조회수가 이전 7일보다 {view_change:+.1f}% 늘었습니다."
-    elif view_change <= -25:
-        recent_trend_state = "🔴 강한 하락"
-        recent_trend_text = f"최근 7일 조회수가 이전 7일보다 {view_change:+.1f}% 줄었습니다."
-    elif view_change <= -5:
-        recent_trend_state = "🟡 약한 하락"
-        recent_trend_text = f"최근 7일 조회수가 이전 7일보다 {view_change:+.1f}% 줄었습니다."
+        recent_trend_state = "📈 비교기간 데이터 부족"
+    elif view_change > 0:
+        recent_trend_state = "📈 증가"
+    elif view_change < 0:
+        recent_trend_state = "📉 감소"
     else:
-        recent_trend_state = "🟡 보합"
-        recent_trend_text = "최근 7일 조회수는 이전 7일과 비슷한 수준입니다."
+        recent_trend_state = "➡️ 동일"
 
-except Exception:
-    recent_trend_text = "최근 채널 추세는 YouTube Analytics 집계 지연으로 잠시 확인하지 못했습니다."
+    st.caption(
+        f"현재 {trend_start:%Y.%m.%d} ~ {trend_end:%Y.%m.%d}  ↔  "
+        f"이전 {prev7_start:%Y.%m.%d} ~ {prev7_end:%Y.%m.%d} · 오늘 데이터 제외"
+    )
 
+    trend_rows = pd.DataFrame([
+        {"지표": "조회수", "현재 기간": f"{recent7['views']:,}회", "이전 기간": f"{prev7['views']:,}회", "변화": _change_text(recent7['views'], prev7['views'])},
+        {"지표": "시청시간", "현재 기간": format_watch_time(recent7['watch_minutes']), "이전 기간": format_watch_time(prev7['watch_minutes']), "변화": _change_text(recent7['watch_minutes'], prev7['watch_minutes'])},
+        {"지표": "순구독자", "현재 기간": f"{recent7['net_subscribers']:+,}명", "이전 기간": f"{prev7['net_subscribers']:+,}명", "변화": f"{recent7['net_subscribers'] - prev7['net_subscribers']:+,}명"},
+        {"지표": "업로드", "현재 기간": f"{recent_uploads}개", "이전 기간": f"{previous_uploads}개", "변화": f"{recent_uploads - previous_uploads:+,}개"},
+    ])
+    st.dataframe(trend_rows, hide_index=True, use_container_width=True)
+
+    tc1, tc2 = st.columns(2)
+    with tc1:
+        st.metric("조회수 기준 추세", recent_trend_state)
+    with tc2:
+        if recent_uploads > 0 and previous_uploads > 0:
+            recent_per_upload = recent7["views"] / recent_uploads
+            prev_per_upload = prev7["views"] / previous_uploads
+            st.metric(
+                "조회수 ÷ 업로드 수 (참고)",
+                f"{recent_per_upload:,.0f}회/개",
+                _change_text(recent_per_upload, prev_per_upload),
+            )
+        else:
+            st.metric("조회수 ÷ 업로드 수 (참고)", "계산 불가")
+
+    st.caption(
+        "※ '조회수 ÷ 업로드 수'는 기간 전체 채널 조회수를 업로드 수로 나눈 참고값입니다. "
+        "기존 영상 조회수도 포함되므로 새 영상 1개의 실제 평균 성과를 뜻하지 않습니다."
+    )
+
+    try:
+        trend_daily = get_daily_channel_data(yt_analytics, trend_start, trend_end)
+        if trend_daily:
+            trend_df = pd.DataFrame(trend_daily)
+            trend_df["date"] = pd.to_datetime(trend_df["date"])
+            trend_df = trend_df.set_index("date")
+            st.markdown("#### 일별 조회수 흐름")
+            st.line_chart(trend_df[["views"]], use_container_width=True, height=240)
+    except Exception:
+        pass
+
+    recent_trend_text = (
+        f"{trend_days}일 기준 조회수 {_change_text(recent7['views'], prev7['views'])}, "
+        f"시청시간 {_change_text(recent7['watch_minutes'], prev7['watch_minutes'])}, "
+        f"업로드 {recent_uploads - previous_uploads:+,}개입니다."
+    )
+
+except Exception as e:
+    st.warning("채널 추세 데이터를 불러오지 못했습니다.")
+    with st.expander("오류 보기"):
+        st.code(str(e))
+    recent_trend_text = "채널 추세 데이터를 확인하지 못했습니다."
+
+st.divider()
 
 if eligible_videos:
     diagnosed = sorted(
