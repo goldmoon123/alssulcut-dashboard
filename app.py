@@ -188,6 +188,36 @@ st.markdown(
             white-space: nowrap !important;
         }
     }
+
+    .status-two-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.75rem;
+        margin-top: 0.6rem;
+    }
+    .status-card {
+        border: 1px solid rgba(128,128,128,.20);
+        border-radius: 12px;
+        padding: 0.8rem 0.9rem;
+        min-height: 88px;
+    }
+    .status-label {
+        font-size: 0.95rem;
+        margin-bottom: 0.35rem;
+    }
+    .status-value {
+        font-size: 1.8rem;
+        line-height: 1.1;
+    }
+    @media (max-width: 768px) {
+        .status-two-grid { gap: 0.55rem; }
+        .status-card {
+            min-height: 92px;
+            padding: 0.65rem 0.7rem;
+        }
+        .status-label { font-size: 0.82rem; }
+        .status-value { font-size: 1.65rem; }
+    }
     </style>
     """,
     unsafe_allow_html=True,
@@ -743,16 +773,20 @@ c3.metric(
     f"{len(scheduled_videos)}개"
 )
 
-c4, c5 = st.columns(2)
-
-c4.metric(
-    "🔒 비공개",
-    f"{len(private_videos)}개"
-)
-
-c5.metric(
-    "🔵 일부공개",
-    f"{len(unlisted_videos)}개"
+st.markdown(
+    f"""
+    <div class="status-two-grid">
+        <div class="status-card">
+            <div class="status-label">🔒 비공개</div>
+            <div class="status-value">{len(private_videos)}개</div>
+        </div>
+        <div class="status-card">
+            <div class="status-label">🔵 일부공개</div>
+            <div class="status-value">{len(unlisted_videos)}개</div>
+        </div>
+    </div>
+    """,
+    unsafe_allow_html=True,
 )
 
 st.caption(
@@ -1120,6 +1154,103 @@ except Exception:
 
 month_lookup = {item["date"]: item for item in month_daily_data}
 
+
+def make_monthly_excel(month_daily_rows, month_value, all_public_videos):
+    """현재 달력에 표시 중인 달의 채널 일별 성과 + 그달 업로드 영상을 엑셀로 만듭니다."""
+    output = BytesIO()
+
+    # 일별 성과
+    daily_export = []
+    for item in month_daily_rows:
+        daily_export.append({
+            "날짜": item.get("date", ""),
+            "조회수": int(item.get("views", 0)),
+            "시청시간(분)": float(item.get("watch_minutes", 0)),
+            "좋아요": int(item.get("likes", 0)),
+            "댓글": int(item.get("comments", 0)),
+            "공유": int(item.get("shares", 0)),
+            "구독자 획득": int(item.get("subscribers_gained", 0)),
+            "구독자 이탈": int(item.get("subscribers_lost", 0)),
+            "순구독자": int(item.get("net_subscribers", 0)),
+        })
+
+    month_daily_df = pd.DataFrame(daily_export)
+
+    # 그달 업로드 영상
+    uploaded_rows = []
+    for video in all_public_videos:
+        published_raw = video.get("published_raw")
+        if not published_raw:
+            continue
+        try:
+            published_dt = datetime.fromisoformat(
+                published_raw.replace("Z", "+00:00")
+            ).astimezone(KST)
+        except Exception:
+            continue
+
+        if (
+            published_dt.year == month_value.year
+            and published_dt.month == month_value.month
+        ):
+            uploaded_rows.append({
+                "업로드일": published_dt.strftime("%Y-%m-%d %H:%M"),
+                "제목": video.get("title", ""),
+                "조회수": int(video.get("views", 0)),
+                "좋아요": int(video.get("likes", 0)),
+                "댓글": int(video.get("comments", 0)),
+                "공유": int(video.get("shares", 0)),
+                "평균 시청시간(초)": round(float(video.get("avg_duration", 0)), 1),
+                "평균 시청률(%)": round(float(video.get("avg_percentage", 0)), 1),
+                "순구독자": int(video.get("net_subs", 0)),
+                "좋아요율(%)": round(float(video.get("like_rate", 0)), 2),
+                "구독전환율(%)": round(float(video.get("sub_conversion_rate", 0)), 3),
+                "성과점수": video.get("performance_score"),
+                "성과등급": video.get("performance_grade", "-"),
+            })
+
+    month_upload_df = pd.DataFrame(uploaded_rows)
+
+    summary_df = pd.DataFrame([
+        ["채널명", channel_info.get("channel_name", "")],
+        ["대상 월", f"{month_value.year}-{month_value.month:02d}"],
+        ["월 조회수", int(month_daily_df["조회수"].sum()) if not month_daily_df.empty else 0],
+        ["월 순구독자", int(month_daily_df["순구독자"].sum()) if not month_daily_df.empty else 0],
+        ["월 시청시간(시간)", round(float(month_daily_df["시청시간(분)"].sum()) / 60, 1) if not month_daily_df.empty else 0],
+        ["그달 업로드 영상", len(month_upload_df)],
+        ["생성 시각", datetime.now(KST).strftime("%Y-%m-%d %H:%M:%S KST")],
+    ], columns=["항목", "값"])
+
+    with pd.ExcelWriter(output, engine="openpyxl") as writer:
+        summary_df.to_excel(writer, sheet_name="월간 요약", index=False)
+        month_daily_df.to_excel(writer, sheet_name="일별 성과", index=False)
+        month_upload_df.to_excel(writer, sheet_name="그달 업로드 영상", index=False)
+
+        for sheet_name in writer.book.sheetnames:
+            ws = writer.book[sheet_name]
+            ws.freeze_panes = "A2"
+            if ws.max_row >= 1 and ws.max_column >= 1:
+                ws.auto_filter.ref = ws.dimensions
+            for column_cells in ws.columns:
+                max_length = 0
+                column_letter = column_cells[0].column_letter
+                for cell in column_cells:
+                    try:
+                        max_length = max(
+                            max_length,
+                            len(str(cell.value)) if cell.value is not None else 0
+                        )
+                    except Exception:
+                        pass
+                ws.column_dimensions[column_letter].width = min(
+                    max(max_length + 2, 10),
+                    45,
+                )
+
+    output.seek(0)
+    return output.getvalue()
+
+
 # 공개 영상을 올린 날짜(KST)
 upload_dates = set()
 for video in public_videos:
@@ -1184,6 +1315,16 @@ for week in calendar.monthcalendar(calendar_month.year, calendar_month.month):
             st.rerun()
 
 st.caption("날짜를 누르면 아래에서 그날의 상세 성과를 확인할 수 있습니다.")
+
+st.download_button(
+    f"📥 {calendar_month.year}년 {calendar_month.month}월 성과 엑셀",
+    data=make_monthly_excel(month_daily_data, calendar_month, public_videos),
+    file_name=f"shorts_monthly_{calendar_month.year}_{calendar_month.month:02d}.xlsx",
+    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    use_container_width=True,
+    key=f"monthly_excel_{calendar_month.year}_{calendar_month.month}",
+)
+
 st.divider()
 
 # =========================================================
@@ -1194,13 +1335,31 @@ st.header(
     "🔎 하루 자세히 보기"
 )
 
-selected_day = st.date_input(
+if "applied_detail_day" not in st.session_state:
+    st.session_state.applied_detail_day = st.session_state.get(
+        "calendar_selected_day",
+        end_date,
+    )
+
+detail_day_input = st.date_input(
     "확인할 날짜",
     value=st.session_state.get("calendar_selected_day", end_date),
     min_value=date(2005, 1, 1),
     max_value=today,
+    key="detail_day_input",
 )
-st.session_state.calendar_selected_day = selected_day
+st.session_state.calendar_selected_day = detail_day_input
+
+if st.button(
+    "🔍 조회하기",
+    type="primary",
+    use_container_width=True,
+    key="apply_detail_day_button",
+):
+    st.session_state.applied_detail_day = detail_day_input
+
+selected_day = st.session_state.applied_detail_day
+st.caption(f"현재 조회 중인 날짜: {selected_day}")
 
 
 try:
@@ -1577,10 +1736,10 @@ st.divider()
 
 
 # =========================================================
-# 20. 자동 성과진단 V1
+# 20. 자동 성과진단 V2
 # =========================================================
 
-st.header("🚦 자동 성과진단 V1")
+st.header("🚦 자동 성과진단 V2")
 st.caption(
     "※ 성과점수는 YouTube 공식 점수가 아니라, 현재 채널의 평가 가능한 공개 영상끼리 "
     "조회수·평균 시청률·좋아요율·구독전환율을 비교한 '채널 내 상대점수'입니다. "
@@ -1667,7 +1826,12 @@ if eligible_videos:
 
     best_diagnosis = diagnosed[0]
     weakest_diagnosis = diagnosed[-1]
+    views_leader = max(eligible_videos, key=lambda x: x.get("views", 0))
+    retention_leader = max(eligible_videos, key=lambda x: x.get("avg_percentage", 0))
+    subs_leader = max(eligible_videos, key=lambda x: x.get("sub_conversion_rate", 0))
+    likes_leader = max(eligible_videos, key=lambda x: x.get("like_rate", 0))
 
+    # 핵심 진단은 짧게, 세부 진단은 아래에서 펼쳐보게 구성
     best_col, weak_col = st.columns(2)
 
     with best_col:
@@ -1677,16 +1841,14 @@ if eligible_videos:
             f"{best_diagnosis['performance_grade']} · "
             f"**{best_diagnosis['performance_score']}점**"
         )
-
         strengths = best_diagnosis.get("diagnosis_strengths", [])
         if strengths:
             st.write("강점: " + ", ".join(strengths))
-
         st.write(
-            f"조회수 {best_diagnosis['views']:,}회 · "
-            f"시청률 {best_diagnosis['avg_percentage']:.1f}% · "
-            f"좋아요율 {best_diagnosis['like_rate']:.2f}% · "
-            f"구독전환율 {best_diagnosis['sub_conversion_rate']:.3f}%"
+            f"👁 {best_diagnosis['views']:,}회 · "
+            f"📊 {best_diagnosis['avg_percentage']:.1f}% · "
+            f"👍 {best_diagnosis['like_rate']:.2f}% · "
+            f"👤 {best_diagnosis['sub_conversion_rate']:.3f}%"
         )
 
     with weak_col:
@@ -1696,16 +1858,77 @@ if eligible_videos:
             f"{weakest_diagnosis['performance_grade']} · "
             f"**{weakest_diagnosis['performance_score']}점**"
         )
-
         weaknesses = weakest_diagnosis.get("diagnosis_weaknesses", [])
         if weaknesses:
             st.write("우선 점검: " + ", ".join(weaknesses))
-
         st.write(
-            f"조회수 {weakest_diagnosis['views']:,}회 · "
-            f"시청률 {weakest_diagnosis['avg_percentage']:.1f}% · "
-            f"좋아요율 {weakest_diagnosis['like_rate']:.2f}% · "
-            f"구독전환율 {weakest_diagnosis['sub_conversion_rate']:.3f}%"
+            f"👁 {weakest_diagnosis['views']:,}회 · "
+            f"📊 {weakest_diagnosis['avg_percentage']:.1f}% · "
+            f"👍 {weakest_diagnosis['like_rate']:.2f}% · "
+            f"👤 {weakest_diagnosis['sub_conversion_rate']:.3f}%"
+        )
+
+    st.markdown("#### 핵심 강점별 1위")
+    q1, q2 = st.columns(2)
+    q3, q4 = st.columns(2)
+
+    q1.metric(
+        "👁 조회수 강자",
+        f"{views_leader['views']:,}회",
+        views_leader["title"][:24],
+        delta_color="off",
+    )
+    q2.metric(
+        "⏱️ 시청 유지 강자",
+        f"{retention_leader['avg_percentage']:.1f}%",
+        retention_leader["title"][:24],
+        delta_color="off",
+    )
+    q3.metric(
+        "👤 구독 전환 강자",
+        f"{subs_leader['sub_conversion_rate']:.3f}%",
+        subs_leader["title"][:24],
+        delta_color="off",
+    )
+    q4.metric(
+        "👍 반응률 강자",
+        f"{likes_leader['like_rate']:.2f}%",
+        likes_leader["title"][:24],
+        delta_color="off",
+    )
+
+    with st.expander("🔬 상세 성과진단 보기", expanded=False):
+        st.markdown("**왜 잘됐는지 / 어디를 점검할지 지표별로 나눠서 봅니다.**")
+
+        detail_rows = []
+        for video in diagnosed:
+            detail_rows.append({
+                "영상": video["title"],
+                "종합점수": video.get("performance_score", 0),
+                "등급": video.get("performance_grade", "-"),
+                "조회수": video.get("views", 0),
+                "평균 시청시간": f"{video.get('avg_duration', 0):.1f}초",
+                "평균 시청률": f"{video.get('avg_percentage', 0):.1f}%",
+                "좋아요": video.get("likes", 0),
+                "좋아요율": f"{video.get('like_rate', 0):.2f}%",
+                "댓글": video.get("comments", 0),
+                "공유": video.get("shares", 0),
+                "순구독자": video.get("net_subs", 0),
+                "구독전환율": f"{video.get('sub_conversion_rate', 0):.3f}%",
+                "강점": ", ".join(video.get("diagnosis_strengths", [])) or "-",
+                "점검": ", ".join(video.get("diagnosis_weaknesses", [])) or "-",
+            })
+
+        st.dataframe(
+            pd.DataFrame(detail_rows),
+            use_container_width=True,
+            hide_index=True,
+            height=340,
+        )
+
+        st.caption(
+            "종합점수만 보는 것보다 조회수·시청 유지·반응·구독 전환을 따로 보면 "
+            "영상의 강점과 약점을 더 정확히 구분할 수 있습니다."
         )
 
     with st.expander(
@@ -1731,92 +1954,17 @@ if eligible_videos:
             hide_index=True,
             height=300,
         )
+else:
+    st.info(
+        "아직 자동진단에 사용할 데이터가 충분하지 않습니다. "
+        "조회수 100회 이상이고 Analytics가 집계된 공개 영상이 필요합니다."
+    )
 
 st.divider()
 
 
 # =========================================================
-# 21. 영상 TOP 랭킹
-# =========================================================
-
-with st.expander("🏆 공개 영상 TOP 랭킹 보기", expanded=False):
-    rank_tab1, rank_tab2, rank_tab3, rank_tab4 = st.tabs(
-        ["👁️ 조회수", "📊 시청률", "👤 구독전환", "👍 좋아요율"]
-    )
-
-    def render_ranked_videos(ranked, metric_name, metric_formatter):
-        if not ranked:
-            st.info("표시할 공개 영상이 없습니다.")
-            return
-
-        for rank, video in enumerate(ranked[:5], start=1):
-            col_img, col_info = st.columns([1, 5])
-            with col_img:
-                if video["thumbnail"]:
-                    st.image(video["thumbnail"], width=125)
-            with col_info:
-                st.markdown(f"**{rank}위 · {video['title']}**")
-                score_value = video.get("performance_score")
-
-                if score_value is None:
-                    score_text = "⏳ 데이터 부족"
-                else:
-                    score_text = (
-                        f"🚦 {score_value}점 · "
-                        f"{video.get('performance_grade', '-')}"
-                    )
-
-                st.write(
-                    f"**{metric_name}: {metric_formatter(video)}**  |  "
-                    f"{score_text}"
-                )
-                st.write(
-                    f"👁️ {video['views']:,}회  |  "
-                    f"👍 {video['likes']:,} ({video['like_rate']:.2f}%)  |  "
-                    f"💬 {video['comments']:,} ({video['comment_rate']:.2f}%)  |  "
-                    f"👤 {video['net_subs']:+d} ({video['sub_conversion_rate']:.3f}%)"
-                )
-                if video["video_id"] in video_analytics:
-                    st.write(
-                        f"⏱️ 평균 시청 {video['avg_duration']:.1f}초  |  "
-                        f"📊 평균 시청률 {video['avg_percentage']:.1f}%  |  "
-                        f"🎞️ {video['duration']}"
-                    )
-                st.link_button(
-                    "▶️ YouTube에서 보기",
-                    "https://www.youtube.com/watch?v=" + video["video_id"],
-                    key=f"rank_{metric_name}_{video['video_id']}"
-                )
-            st.divider()
-
-    with rank_tab1:
-        render_ranked_videos(
-            sorted(public_videos, key=lambda x: x["views"], reverse=True),
-            "조회수", lambda v: f"{v['views']:,}회"
-        )
-
-    with rank_tab2:
-        render_ranked_videos(
-            sorted(public_videos, key=lambda x: x["avg_percentage"], reverse=True),
-            "평균 시청률", lambda v: f"{v['avg_percentage']:.1f}%"
-        )
-
-    with rank_tab3:
-        render_ranked_videos(
-            sorted(public_videos, key=lambda x: x["sub_conversion_rate"], reverse=True),
-            "구독전환율", lambda v: f"{v['sub_conversion_rate']:.3f}%"
-        )
-
-    with rank_tab4:
-        render_ranked_videos(
-            sorted(public_videos, key=lambda x: x["like_rate"], reverse=True),
-            "좋아요율", lambda v: f"{v['like_rate']:.2f}%"
-        )
-
-
-
-# =========================================================
-# 22. 전체 영상 표
+# 21. 전체 영상 분석
 # =========================================================
 
 st.subheader(
@@ -2163,13 +2311,103 @@ with download_c2:
         disabled=result_count == 0,
     )
 
-with st.expander("📋 전체 영상 표 펼쳐보기", expanded=False):
+with st.expander("📋 전체 영상 데이터 보기", expanded=False):
     st.dataframe(
         df,
         use_container_width=True,
         hide_index=True,
         height=340,
     )
+
+
+
+
+# =========================================================
+# 22. 영상 TOP 랭킹
+# =========================================================
+
+with st.expander("🏆 공개 영상 TOP 랭킹 보기", expanded=False):
+    rank_limit = st.radio(
+        "표시 개수",
+        [5, 10, 20],
+        horizontal=True,
+        format_func=lambda n: f"TOP {n}",
+        key="ranking_display_count",
+    )
+
+    rank_tab1, rank_tab2, rank_tab3, rank_tab4 = st.tabs(
+        ["👁️ 조회수", "📊 시청률", "👤 구독전환", "👍 좋아요율"]
+    )
+
+    def render_ranked_videos(ranked, metric_name, metric_formatter):
+        if not ranked:
+            st.info("표시할 공개 영상이 없습니다.")
+            return
+
+        for rank, video in enumerate(ranked[:rank_limit], start=1):
+            col_img, col_info = st.columns([1, 5])
+            with col_img:
+                if video["thumbnail"]:
+                    st.image(video["thumbnail"], width=125)
+            with col_info:
+                st.markdown(f"**{rank}위 · {video['title']}**")
+                score_value = video.get("performance_score")
+
+                if score_value is None:
+                    score_text = "⏳ 데이터 부족"
+                else:
+                    score_text = (
+                        f"🚦 {score_value}점 · "
+                        f"{video.get('performance_grade', '-')}"
+                    )
+
+                st.write(
+                    f"**{metric_name}: {metric_formatter(video)}**  |  "
+                    f"{score_text}"
+                )
+                st.write(
+                    f"👁️ {video['views']:,}회  |  "
+                    f"👍 {video['likes']:,} ({video['like_rate']:.2f}%)  |  "
+                    f"💬 {video['comments']:,} ({video['comment_rate']:.2f}%)  |  "
+                    f"👤 {video['net_subs']:+d} ({video['sub_conversion_rate']:.3f}%)"
+                )
+                if video["video_id"] in video_analytics:
+                    st.write(
+                        f"⏱️ 평균 시청 {video['avg_duration']:.1f}초  |  "
+                        f"📊 평균 시청률 {video['avg_percentage']:.1f}%  |  "
+                        f"🎞️ {video['duration']}"
+                    )
+                st.link_button(
+                    "▶️ YouTube에서 보기",
+                    "https://www.youtube.com/watch?v=" + video["video_id"],
+                    key=f"rank_{metric_name}_{video['video_id']}"
+                )
+            st.divider()
+
+    with rank_tab1:
+        render_ranked_videos(
+            sorted(public_videos, key=lambda x: x["views"], reverse=True),
+            "조회수", lambda v: f"{v['views']:,}회"
+        )
+
+    with rank_tab2:
+        render_ranked_videos(
+            sorted(public_videos, key=lambda x: x["avg_percentage"], reverse=True),
+            "평균 시청률", lambda v: f"{v['avg_percentage']:.1f}%"
+        )
+
+    with rank_tab3:
+        render_ranked_videos(
+            sorted(public_videos, key=lambda x: x["sub_conversion_rate"], reverse=True),
+            "구독전환율", lambda v: f"{v['sub_conversion_rate']:.3f}%"
+        )
+
+    with rank_tab4:
+        render_ranked_videos(
+            sorted(public_videos, key=lambda x: x["like_rate"], reverse=True),
+            "좋아요율", lambda v: f"{v['like_rate']:.2f}%"
+        )
+
 
 
 # =========================================================
