@@ -5,6 +5,7 @@ from io import BytesIO
 from openpyxl.worksheet.table import Table, TableStyleInfo
 import calendar
 import re
+import time
 
 import pandas as pd
 import streamlit as st
@@ -1126,6 +1127,23 @@ def add_excel_table(ws, table_name):
     ws.add_table(table)
 
 
+def call_with_retry(func, *args, attempts=2, delay=0.35, **kwargs):
+    """YouTube API의 일시적 5xx 오류를 짧게 재시도합니다."""
+    last_error = None
+    for attempt in range(attempts):
+        try:
+            return func(*args, **kwargs)
+        except Exception as exc:
+            last_error = exc
+            status = getattr(getattr(exc, "resp", None), "status", None)
+            if status is not None and int(status) < 500:
+                raise
+            if attempt < attempts - 1:
+                time.sleep(delay)
+    if last_error:
+        raise last_error
+
+
 # =========================================================
 # 17. 월간 성과 달력
 # =========================================================
@@ -1944,7 +1962,7 @@ try:
 except Exception as e:
     st.info("최근 채널 추세 데이터가 일시적으로 지연되어 영상별 성과를 기준으로 진단합니다.")
     with st.expander("진단 오류 보기"):
-        st.code(str(e))
+        st.caption("YouTube Analytics 응답이 일시적으로 지연되었습니다. 잠시 후 다시 조회해 주세요.")
 
 
 if eligible_videos:
@@ -2011,14 +2029,14 @@ if eligible_videos:
             st.write("큰 약점은 두드러지지 않습니다. 잘된 영상의 **주제·길이·전개 속도**를 반복 검증하는 것이 좋습니다.")
 
     st.markdown("#### 💡 다음 영상에서 해볼 것")
-    st.write(f"1. `{retention_leader['title']}`의 **길이와 전개 속도**를 참고하세요.")
+    st.write(f"1. **시청 유지 참고:** `{retention_leader['title']}`의 길이와 전개 속도를 비교해보세요.")
     st.write(
-        f"2. `{likes_leader['title']}`은 좋아요율 **{likes_leader.get('like_rate', 0):.2f}%**로 가장 높습니다. "
-        "시청자가 반응한 소재·결론 방식을 비교해보세요."
+        f"2. **반응 참고:** `{likes_leader['title']}`은 좋아요율 **{likes_leader.get('like_rate', 0):.2f}%**로 가장 높습니다. "
+        "시청자가 반응한 소재와 결론 방식을 비교해보세요."
     )
     st.write(
-        f"3. `{subs_leader['title']}`은 구독전환율 **{subs_leader.get('sub_conversion_rate', 0):.3f}%**로 가장 높습니다. "
-        "채널의 다른 영상도 보고 싶게 만든 요소가 무엇인지 비교해보세요."
+        f"3. **구독 전환 참고:** `{subs_leader['title']}`은 구독전환율 **{subs_leader.get('sub_conversion_rate', 0):.3f}%**로 가장 높습니다. "
+        "채널의 다른 영상도 보고 싶게 만든 주제와 구조를 비교해보세요."
     )
 
     st.markdown("#### 🎯 다음 목표")
@@ -2026,10 +2044,13 @@ if eligible_videos:
     target_like = max(avg_like_diag + 0.20, avg_like_diag * 1.10)
     target_sub = max(avg_sub_diag + 0.03, avg_sub_diag * 1.10)
 
-    g1, g2, g3 = st.columns(3)
-    g1.metric("평균 시청률", f"{avg_ret_diag:.1f}% → {target_ret:.1f}%")
-    g2.metric("좋아요율", f"{avg_like_diag:.2f}% → {target_like:.2f}%")
-    g3.metric("구독전환율", f"{avg_sub_diag:.3f}% → {target_sub:.3f}%")
+    st.markdown(
+        f"""
+        **평균 시청률**　{avg_ret_diag:.1f}% → **{target_ret:.1f}%**  
+        **좋아요율**　{avg_like_diag:.2f}% → **{target_like:.2f}%**  
+        **구독전환율**　{avg_sub_diag:.3f}% → **{target_sub:.3f}%**
+        """
+    )
     st.caption("목표치는 현재 평균보다 한 단계 높은 내부 참고 목표이며 YouTube 공식 권장 기준은 아닙니다.")
 
     with st.expander("🔬 영상별 상세 분석 보기", expanded=False):
