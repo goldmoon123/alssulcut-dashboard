@@ -229,9 +229,29 @@ st.markdown(
 st.title("📊 Shorts Scope")
 
 st.write(
-    "YouTube 채널을 연결하고 "
-    "쇼츠 성과를 한눈에 확인하세요."
+    "YouTube Shorts 채널의 성과를 한눈에 확인하고 분석할 수 있는 대시보드입니다."
 )
+
+st.markdown(
+    """
+    ### Shorts Scope에서 할 수 있는 것
+
+    - **채널 현황 확인**: 구독자, 총 조회수, 공개 영상 수를 한눈에 확인합니다.
+    - **Shorts 성과 분석**: 기간별 조회수, 시청시간, 구독자 변화와 영상별 성과를 분석합니다.
+    - **성과 비교 및 진단**: 시청률, 좋아요율, 구독 전환율 등을 비교해 다음 영상 제작에 참고할 수 있습니다.
+
+    Shorts Scope는 사용자가 직접 Google 계정을 연결한 경우에만
+    YouTube의 **읽기 전용 데이터**를 불러옵니다.
+    Shorts Scope는 사용자의 YouTube 콘텐츠를 생성, 수정 또는 삭제하지 않습니다.
+    """
+)
+
+st.link_button(
+    "🔒 개인정보처리방침",
+    "https://goldmoon123.github.io/alssulcut-dashboard/privacy.html",
+)
+
+st.divider()
 
 
 # =========================================================
@@ -380,8 +400,12 @@ if (
     )
 
     st.write(
-        "Google 계정으로 로그인한 뒤 "
-        "분석할 YouTube 채널을 선택하세요."
+        "Google 계정을 연결하면 본인 YouTube 채널의 읽기 전용 데이터를 불러와 "
+        "채널 및 Shorts 성과 분석을 시작합니다."
+    )
+
+    st.caption(
+        "연결 전에도 위에서 Shorts Scope의 목적과 개인정보처리방침을 확인할 수 있습니다."
     )
 
     st.link_button(
