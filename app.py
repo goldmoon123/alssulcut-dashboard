@@ -1156,32 +1156,26 @@ month_lookup = {item["date"]: item for item in month_daily_data}
 
 
 def make_monthly_excel(month_daily_rows, month_value, all_public_videos):
-    """현재 달력에 표시 중인 달의 채널 일별 성과 + 그달 업로드 영상을 엑셀로 만듭니다."""
+    """
+    달력에서 선택한 달을 실제 분석용 엑셀로 내보냅니다.
+
+    1시트: 월간 일별 성과
+    2시트: 그달 업로드 영상
+    3시트: 월간 요약
+    """
     output = BytesIO()
 
-    # 일별 성과
-    daily_export = []
-    for item in month_daily_rows:
-        daily_export.append({
-            "날짜": item.get("date", ""),
-            "조회수": int(item.get("views", 0)),
-            "시청시간(분)": float(item.get("watch_minutes", 0)),
-            "좋아요": int(item.get("likes", 0)),
-            "댓글": int(item.get("comments", 0)),
-            "공유": int(item.get("shares", 0)),
-            "구독자 획득": int(item.get("subscribers_gained", 0)),
-            "구독자 이탈": int(item.get("subscribers_lost", 0)),
-            "순구독자": int(item.get("net_subscribers", 0)),
-        })
-
-    month_daily_df = pd.DataFrame(daily_export)
-
-    # 그달 업로드 영상
+    # -----------------------------
+    # 그달 업로드 영상 정리
+    # -----------------------------
     uploaded_rows = []
+    upload_by_date = {}
+
     for video in all_public_videos:
         published_raw = video.get("published_raw")
         if not published_raw:
             continue
+
         try:
             published_dt = datetime.fromisoformat(
                 published_raw.replace("Z", "+00:00")
@@ -1193,8 +1187,11 @@ def make_monthly_excel(month_daily_rows, month_value, all_public_videos):
             published_dt.year == month_value.year
             and published_dt.month == month_value.month
         ):
+            date_key = published_dt.strftime("%Y-%m-%d")
+            upload_by_date.setdefault(date_key, []).append(video.get("title", ""))
+
             uploaded_rows.append({
-                "업로드일": published_dt.strftime("%Y-%m-%d %H:%M"),
+                "업로드일(KST)": published_dt.strftime("%Y-%m-%d %H:%M"),
                 "제목": video.get("title", ""),
                 "조회수": int(video.get("views", 0)),
                 "좋아요": int(video.get("likes", 0)),
@@ -1205,47 +1202,157 @@ def make_monthly_excel(month_daily_rows, month_value, all_public_videos):
                 "순구독자": int(video.get("net_subs", 0)),
                 "좋아요율(%)": round(float(video.get("like_rate", 0)), 2),
                 "구독전환율(%)": round(float(video.get("sub_conversion_rate", 0)), 3),
-                "성과점수": video.get("performance_score"),
+                "성과점수": (
+                    video.get("performance_score")
+                    if video.get("performance_score") is not None
+                    else "평가 보류"
+                ),
                 "성과등급": video.get("performance_grade", "-"),
             })
 
     month_upload_df = pd.DataFrame(uploaded_rows)
 
+    # -----------------------------
+    # 날짜별 Analytics 정리
+    # 데이터가 없는 날짜도 0으로 포함
+    # -----------------------------
+    daily_lookup = {
+        str(item.get("date", "")): item
+        for item in month_daily_rows
+    }
+
+    last_day = calendar.monthrange(month_value.year, month_value.month)[1]
+    calendar_last_date = date(month_value.year, month_value.month, last_day)
+
+    if month_value.year == today.year and month_value.month == today.month:
+        export_last_date = today
+    else:
+        export_last_date = calendar_last_date
+
+    weekday_ko = ["월", "화", "수", "목", "금", "토", "일"]
+    daily_export = []
+
+    current_date = date(month_value.year, month_value.month, 1)
+
+    while current_date <= export_last_date:
+        date_key = current_date.strftime("%Y-%m-%d")
+        item = daily_lookup.get(date_key, {})
+
+        watch_minutes = float(item.get("watch_minutes", 0) or 0)
+        uploaded_titles = upload_by_date.get(date_key, [])
+
+        daily_export.append({
+            "날짜": date_key,
+            "요일": weekday_ko[current_date.weekday()],
+            "조회수": int(item.get("views", 0) or 0),
+            "시청시간(시간)": round(watch_minutes / 60, 2),
+            "좋아요": int(item.get("likes", 0) or 0),
+            "댓글": int(item.get("comments", 0) or 0),
+            "공유": int(item.get("shares", 0) or 0),
+            "구독자 획득": int(item.get("subscribers_gained", 0) or 0),
+            "구독자 이탈": int(item.get("subscribers_lost", 0) or 0),
+            "순구독자": int(item.get("net_subscribers", 0) or 0),
+            "업로드 영상 수": len(uploaded_titles),
+            "업로드 영상": " / ".join(uploaded_titles),
+        })
+
+        current_date += timedelta(days=1)
+
+    month_daily_df = pd.DataFrame(daily_export)
+
+    # 맨 아래 합계 행
+    if not month_daily_df.empty:
+        total_row = {
+            "날짜": "합계",
+            "요일": "",
+            "조회수": int(month_daily_df["조회수"].sum()),
+            "시청시간(시간)": round(float(month_daily_df["시청시간(시간)"].sum()), 2),
+            "좋아요": int(month_daily_df["좋아요"].sum()),
+            "댓글": int(month_daily_df["댓글"].sum()),
+            "공유": int(month_daily_df["공유"].sum()),
+            "구독자 획득": int(month_daily_df["구독자 획득"].sum()),
+            "구독자 이탈": int(month_daily_df["구독자 이탈"].sum()),
+            "순구독자": int(month_daily_df["순구독자"].sum()),
+            "업로드 영상 수": int(month_daily_df["업로드 영상 수"].sum()),
+            "업로드 영상": "",
+        }
+        month_daily_df = pd.concat(
+            [month_daily_df, pd.DataFrame([total_row])],
+            ignore_index=True,
+        )
+
+    # -----------------------------
+    # 월간 요약
+    # -----------------------------
+    data_only_df = month_daily_df[month_daily_df["날짜"] != "합계"].copy()
+
     summary_df = pd.DataFrame([
-        ["채널명", channel_info.get("channel_name", "")],
+        ["채널명", channel_info.get("channel_name", channel_info.get("title", ""))],
         ["대상 월", f"{month_value.year}-{month_value.month:02d}"],
-        ["월 조회수", int(month_daily_df["조회수"].sum()) if not month_daily_df.empty else 0],
-        ["월 순구독자", int(month_daily_df["순구독자"].sum()) if not month_daily_df.empty else 0],
-        ["월 시청시간(시간)", round(float(month_daily_df["시청시간(분)"].sum()) / 60, 1) if not month_daily_df.empty else 0],
+        ["월 조회수", int(data_only_df["조회수"].sum()) if not data_only_df.empty else 0],
+        ["월 순구독자", int(data_only_df["순구독자"].sum()) if not data_only_df.empty else 0],
+        ["월 시청시간(시간)", round(float(data_only_df["시청시간(시간)"].sum()), 2) if not data_only_df.empty else 0],
+        ["월 좋아요", int(data_only_df["좋아요"].sum()) if not data_only_df.empty else 0],
+        ["월 댓글", int(data_only_df["댓글"].sum()) if not data_only_df.empty else 0],
+        ["월 공유", int(data_only_df["공유"].sum()) if not data_only_df.empty else 0],
         ["그달 업로드 영상", len(month_upload_df)],
         ["생성 시각", datetime.now(KST).strftime("%Y-%m-%d %H:%M:%S KST")],
     ], columns=["항목", "값"])
 
+    # -----------------------------
+    # Excel 출력
+    # -----------------------------
     with pd.ExcelWriter(output, engine="openpyxl") as writer:
-        summary_df.to_excel(writer, sheet_name="월간 요약", index=False)
-        month_daily_df.to_excel(writer, sheet_name="일별 성과", index=False)
+        # 열자마자 상세 데이터가 먼저 보이게 함
+        month_daily_df.to_excel(writer, sheet_name="월간 일별 성과", index=False)
         month_upload_df.to_excel(writer, sheet_name="그달 업로드 영상", index=False)
+        summary_df.to_excel(writer, sheet_name="월간 요약", index=False)
 
         for sheet_name in writer.book.sheetnames:
             ws = writer.book[sheet_name]
             ws.freeze_panes = "A2"
-            if ws.max_row >= 1 and ws.max_column >= 1:
-                ws.auto_filter.ref = ws.dimensions
+            ws.auto_filter.ref = ws.dimensions
+
+            header_map = {
+                cell.value: cell.column_letter
+                for cell in ws[1]
+                if cell.value is not None
+            }
+
             for column_cells in ws.columns:
                 max_length = 0
                 column_letter = column_cells[0].column_letter
+
                 for cell in column_cells:
                     try:
-                        max_length = max(
-                            max_length,
-                            len(str(cell.value)) if cell.value is not None else 0
-                        )
+                        cell_length = len(str(cell.value)) if cell.value is not None else 0
+                        max_length = max(max_length, cell_length)
                     except Exception:
                         pass
+
                 ws.column_dimensions[column_letter].width = min(
-                    max(max_length + 2, 10),
-                    45,
+                    max(max_length + 3, 11),
+                    48,
                 )
+
+            # 날짜는 무조건 문자열로
+            for header in ["날짜", "업로드일(KST)"]:
+                if header in header_map:
+                    col = header_map[header]
+                    for row in range(2, ws.max_row + 1):
+                        ws[f"{col}{row}"].number_format = "@"
+
+            if "날짜" in header_map:
+                ws.column_dimensions[header_map["날짜"]].width = 14
+
+            if "업로드일(KST)" in header_map:
+                ws.column_dimensions[header_map["업로드일(KST)"]].width = 21
+
+            if "제목" in header_map:
+                ws.column_dimensions[header_map["제목"]].width = 42
+
+            if "업로드 영상" in header_map:
+                ws.column_dimensions[header_map["업로드 영상"]].width = 48
 
     output.seek(0)
     return output.getvalue()
@@ -1972,6 +2079,29 @@ st.subheader(
 )
 
 
+def format_video_upload_kst(video):
+    """
+    Excel/표에서 날짜가 #### 또는 이상한 숫자로 보이지 않도록
+    YouTube 원본 업로드 시각을 한국시간 문자열로 고정합니다.
+    """
+    published_raw = video.get("published_raw")
+
+    if published_raw:
+        try:
+            published_dt = datetime.fromisoformat(
+                published_raw.replace("Z", "+00:00")
+            ).astimezone(KST)
+            return published_dt.strftime("%Y-%m-%d %H:%M")
+        except Exception:
+            pass
+
+    published_value = video.get("published", "")
+    if published_value is None:
+        return ""
+
+    return str(published_value)
+
+
 table_data = []
 
 
@@ -2054,7 +2184,7 @@ for video in videos:
             video["duration"],
 
         "업로드":
-            video["published"],
+            format_video_upload_kst(video),
 
         "예약 공개":
             video["scheduled"],
@@ -2250,8 +2380,18 @@ with st.expander(
 # =========================================================
 
 def make_excel_file(primary_df, primary_sheet_name):
-    """사용자가 열자마자 영상 데이터가 먼저 보이도록 첫 시트에 실제 데이터를 둡니다."""
+    """
+    전체 영상/검색 결과 엑셀.
+    날짜·길이를 엑셀이 임의의 날짜/시간 형식으로 바꾸지 않도록 문자열로 내보냅니다.
+    """
     output = BytesIO()
+
+    export_df = primary_df.copy()
+
+    # Excel이 업로드 날짜/영상 길이를 자동 날짜·시간으로 오인하지 않게 문자열 고정
+    for column_name in ["업로드", "예약 공개", "길이"]:
+        if column_name in export_df.columns:
+            export_df[column_name] = export_df[column_name].fillna("").astype(str)
 
     summary_rows = [
         ["채널명", channel_info.get("channel_name", channel_info.get("title", ""))],
@@ -2260,31 +2400,62 @@ def make_excel_file(primary_df, primary_sheet_name):
         ["전체 감지 영상", len(videos)],
         ["공개 영상", len(public_videos)],
         ["예약 영상", len(scheduled_videos)],
-        ["내보낸 영상", len(primary_df)],
+        ["내보낸 영상", len(export_df)],
         ["생성 시각", datetime.now(KST).strftime("%Y-%m-%d %H:%M:%S KST")],
     ]
     summary_df = pd.DataFrame(summary_rows, columns=["항목", "값"])
 
     with pd.ExcelWriter(output, engine="openpyxl") as writer:
-        # 핵심 수정: 영상 데이터 시트를 첫 번째로 저장
-        primary_df.to_excel(writer, sheet_name=primary_sheet_name, index=False)
+        export_df.to_excel(writer, sheet_name=primary_sheet_name, index=False)
         summary_df.to_excel(writer, sheet_name="채널 요약", index=False)
 
         for sheet_name in writer.book.sheetnames:
             ws = writer.book[sheet_name]
+            ws.freeze_panes = "A2"
+            ws.auto_filter.ref = ws.dimensions
+
             for column_cells in ws.columns:
                 max_length = 0
                 column_letter = column_cells[0].column_letter
+
                 for cell in column_cells:
                     try:
                         cell_length = len(str(cell.value)) if cell.value is not None else 0
                         max_length = max(max_length, cell_length)
                     except Exception:
                         pass
-                ws.column_dimensions[column_letter].width = min(max(max_length + 2, 10), 45)
 
-            ws.freeze_panes = "A2"
-            ws.auto_filter.ref = ws.dimensions
+                ws.column_dimensions[column_letter].width = min(
+                    max(max_length + 3, 11),
+                    48,
+                )
+
+            # 영상 데이터 시트에서 자주 잘리던 열은 최소 폭 보장
+            if sheet_name == primary_sheet_name:
+                header_map = {
+                    cell.value: cell.column_letter
+                    for cell in ws[1]
+                    if cell.value is not None
+                }
+
+                if "업로드" in header_map:
+                    ws.column_dimensions[header_map["업로드"]].width = 21
+
+                if "예약 공개" in header_map:
+                    ws.column_dimensions[header_map["예약 공개"]].width = 21
+
+                if "길이" in header_map:
+                    ws.column_dimensions[header_map["길이"]].width = 12
+
+                if "제목" in header_map:
+                    ws.column_dimensions[header_map["제목"]].width = 42
+
+                # 날짜/시간 열은 '텍스트'로 고정
+                for header in ["업로드", "예약 공개", "길이"]:
+                    if header in header_map:
+                        col = header_map[header]
+                        for row in range(2, ws.max_row + 1):
+                            ws[f"{col}{row}"].number_format = "@"
 
     output.seek(0)
     return output.getvalue()
