@@ -77,7 +77,7 @@ SCOPES = [
 ]
 
 st.set_page_config(
-    page_title="알쓸컷 쇼츠 분석기",
+    page_title="Shorts Scope",
     page_icon="📊",
     layout="wide",
 )
@@ -226,7 +226,7 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-st.title("📊 알쓸컷 쇼츠 분석기")
+st.title("📊 Shorts Scope")
 
 st.write(
     "YouTube 채널을 연결하고 "
