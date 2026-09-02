@@ -172,6 +172,15 @@ st.markdown(
         [data-baseweb="tab-list"] { gap: 0.15rem !important; }
         [data-baseweb="tab"] { padding-left: 0.45rem !important; padding-right: 0.45rem !important; }
 
+
+        /* metric 제목이 ... 으로 잘리지 않도록 */
+        [data-testid="stMetricLabel"] p {
+            white-space: normal !important;
+            overflow: visible !important;
+            text-overflow: clip !important;
+            line-height: 1.15 !important;
+        }
+
         /* 긴 metric 값이 ... 으로 잘리지 않도록 */
         [data-testid="stMetricValue"] > div {
             overflow: visible !important;
@@ -689,7 +698,7 @@ st.subheader(
 )
 
 
-c1, c2, c3, _top_blank = st.columns(4)
+c1, c2, c3 = st.columns(3)
 
 c1.metric(
     "구독자",
@@ -697,12 +706,12 @@ c1.metric(
 )
 
 c2.metric(
-    "채널 총 조회수",
+    "총 조회수",
     f"{channel_info['total_views']:,}회"
 )
 
 c3.metric(
-    "YouTube 공개 영상",
+    "공개 영상",
     f"{channel_info['public_video_count']:,}개"
 )
 
@@ -717,12 +726,10 @@ st.subheader(
     "🎬 영상 현황"
 )
 
-c1, c2, c3, c4, c5 = (
-    st.columns(5)
-)
+c1, c2, c3 = st.columns(3)
 
 c1.metric(
-    "전체 감지",
+    "전체",
     f"{len(videos)}개"
 )
 
@@ -735,6 +742,8 @@ c3.metric(
     "🟡 예약",
     f"{len(scheduled_videos)}개"
 )
+
+c4, c5 = st.columns(2)
 
 c4.metric(
     "🔒 비공개",
@@ -769,98 +778,68 @@ st.write(
 
 
 # ---------------------------------------------------------
-# 기간 버튼
+# 기간 선택 + 분석하기 버튼
 # ---------------------------------------------------------
-
-period_option = st.radio(
-
-    "분석 기간",
-
-    [
-        "오늘",
-        "최근 7일",
-        "최근 28일",
-        "직접 선택",
-    ],
-
-    horizontal=True,
-    index=1,
-)
-
 
 today = datetime.now(KST).date()
 
+# 처음 들어왔을 때는 최근 7일을 기본 적용
+if "applied_period_option" not in st.session_state:
+    st.session_state.applied_period_option = "최근 7일"
+    st.session_state.applied_start_date = today - timedelta(days=7)
+    st.session_state.applied_end_date = today - timedelta(days=1)
 
-if period_option == "오늘":
+period_option = st.radio(
+    "분석 기간",
+    ["오늘", "최근 7일", "최근 28일", "직접 선택"],
+    horizontal=True,
+    index=1,
+    key="period_option_input",
+)
 
-    start_date = today
-    end_date = today
-
-
-elif period_option == "최근 7일":
-
-    # 오늘 Analytics는 집계 지연이 있을 수 있으므로
-    # 완료 데이터 기준으로 어제까지 7일을 사용
-    end_date = today - timedelta(days=1)
-    start_date = end_date - timedelta(days=6)
-
-
-elif period_option == "최근 28일":
-
-    # 오늘을 제외한 최근 완료 데이터 28일
-    end_date = today - timedelta(days=1)
-    start_date = end_date - timedelta(days=27)
-
-
-else:
-
-    selected_range = (
-        st.date_input(
-            "날짜 범위 선택",
-            value=(
-                today
-                - timedelta(days=6),
-                today
-            ),
-        )
+selected_range = None
+if period_option == "직접 선택":
+    selected_range = st.date_input(
+        "날짜 범위 선택",
+        value=(today - timedelta(days=6), today),
+        key="period_custom_range",
     )
 
-    if isinstance(
-        selected_range,
-        tuple
-    ):
-
-        if len(
-            selected_range
-        ) == 2:
-
-            start_date = (
-                selected_range[0]
-            )
-
-            end_date = (
-                selected_range[1]
-            )
-
-        else:
-
-            start_date = today
-            end_date = today
-
+if period_option == "오늘":
+    candidate_start = today
+    candidate_end = today
+elif period_option == "최근 7일":
+    candidate_end = today - timedelta(days=1)
+    candidate_start = candidate_end - timedelta(days=6)
+elif period_option == "최근 28일":
+    candidate_end = today - timedelta(days=1)
+    candidate_start = candidate_end - timedelta(days=27)
+else:
+    if isinstance(selected_range, tuple) and len(selected_range) == 2:
+        candidate_start, candidate_end = selected_range
+    elif selected_range:
+        candidate_start = selected_range
+        candidate_end = selected_range
     else:
+        candidate_start = today
+        candidate_end = today
 
-        start_date = (
-            selected_range
-        )
+if st.button(
+    "🔍 분석하기",
+    type="primary",
+    use_container_width=True,
+    key="apply_period_button",
+):
+    st.session_state.applied_period_option = period_option
+    st.session_state.applied_start_date = candidate_start
+    st.session_state.applied_end_date = candidate_end
 
-        end_date = (
-            selected_range
-        )
-
+period_option = st.session_state.applied_period_option
+start_date = st.session_state.applied_start_date
+end_date = st.session_state.applied_end_date
 
 st.caption(
-    f"분석 기간: "
-    f"{start_date} ~ {end_date}"
+    f"적용된 분석 기간: {start_date} ~ {end_date}"
 )
 
 if period_option == "오늘":
@@ -1760,80 +1739,80 @@ st.divider()
 # 21. 영상 TOP 랭킹
 # =========================================================
 
-st.subheader("🏆 공개 영상 TOP 랭킹")
+with st.expander("🏆 공개 영상 TOP 랭킹 보기", expanded=False):
+    rank_tab1, rank_tab2, rank_tab3, rank_tab4 = st.tabs(
+        ["👁️ 조회수", "📊 시청률", "👤 구독전환", "👍 좋아요율"]
+    )
 
-rank_tab1, rank_tab2, rank_tab3, rank_tab4 = st.tabs(
-    ["👁️ 조회수", "📊 시청률", "👤 구독전환", "👍 좋아요율"]
-)
+    def render_ranked_videos(ranked, metric_name, metric_formatter):
+        if not ranked:
+            st.info("표시할 공개 영상이 없습니다.")
+            return
 
-def render_ranked_videos(ranked, metric_name, metric_formatter):
-    if not ranked:
-        st.info("표시할 공개 영상이 없습니다.")
-        return
+        for rank, video in enumerate(ranked[:5], start=1):
+            col_img, col_info = st.columns([1, 5])
+            with col_img:
+                if video["thumbnail"]:
+                    st.image(video["thumbnail"], width=125)
+            with col_info:
+                st.markdown(f"**{rank}위 · {video['title']}**")
+                score_value = video.get("performance_score")
 
-    for rank, video in enumerate(ranked[:5], start=1):
-        col_img, col_info = st.columns([1, 5])
-        with col_img:
-            if video["thumbnail"]:
-                st.image(video["thumbnail"], width=125)
-        with col_info:
-            st.markdown(f"**{rank}위 · {video['title']}**")
-            score_value = video.get("performance_score")
+                if score_value is None:
+                    score_text = "⏳ 데이터 부족"
+                else:
+                    score_text = (
+                        f"🚦 {score_value}점 · "
+                        f"{video.get('performance_grade', '-')}"
+                    )
 
-            if score_value is None:
-                score_text = "⏳ 데이터 부족"
-            else:
-                score_text = (
-                    f"🚦 {score_value}점 · "
-                    f"{video.get('performance_grade', '-')}"
-                )
-
-            st.write(
-                f"**{metric_name}: {metric_formatter(video)}**  |  "
-                f"{score_text}"
-            )
-            st.write(
-                f"👁️ {video['views']:,}회  |  "
-                f"👍 {video['likes']:,} ({video['like_rate']:.2f}%)  |  "
-                f"💬 {video['comments']:,} ({video['comment_rate']:.2f}%)  |  "
-                f"👤 {video['net_subs']:+d} ({video['sub_conversion_rate']:.3f}%)"
-            )
-            if video["video_id"] in video_analytics:
                 st.write(
-                    f"⏱️ 평균 시청 {video['avg_duration']:.1f}초  |  "
-                    f"📊 평균 시청률 {video['avg_percentage']:.1f}%  |  "
-                    f"🎞️ {video['duration']}"
+                    f"**{metric_name}: {metric_formatter(video)}**  |  "
+                    f"{score_text}"
                 )
-            st.link_button(
-                "▶️ YouTube에서 보기",
-                "https://www.youtube.com/watch?v=" + video["video_id"],
-                key=f"rank_{metric_name}_{video['video_id']}"
-            )
-        st.divider()
+                st.write(
+                    f"👁️ {video['views']:,}회  |  "
+                    f"👍 {video['likes']:,} ({video['like_rate']:.2f}%)  |  "
+                    f"💬 {video['comments']:,} ({video['comment_rate']:.2f}%)  |  "
+                    f"👤 {video['net_subs']:+d} ({video['sub_conversion_rate']:.3f}%)"
+                )
+                if video["video_id"] in video_analytics:
+                    st.write(
+                        f"⏱️ 평균 시청 {video['avg_duration']:.1f}초  |  "
+                        f"📊 평균 시청률 {video['avg_percentage']:.1f}%  |  "
+                        f"🎞️ {video['duration']}"
+                    )
+                st.link_button(
+                    "▶️ YouTube에서 보기",
+                    "https://www.youtube.com/watch?v=" + video["video_id"],
+                    key=f"rank_{metric_name}_{video['video_id']}"
+                )
+            st.divider()
 
-with rank_tab1:
-    render_ranked_videos(
-        sorted(public_videos, key=lambda x: x["views"], reverse=True),
-        "조회수", lambda v: f"{v['views']:,}회"
-    )
+    with rank_tab1:
+        render_ranked_videos(
+            sorted(public_videos, key=lambda x: x["views"], reverse=True),
+            "조회수", lambda v: f"{v['views']:,}회"
+        )
 
-with rank_tab2:
-    render_ranked_videos(
-        sorted(public_videos, key=lambda x: x["avg_percentage"], reverse=True),
-        "평균 시청률", lambda v: f"{v['avg_percentage']:.1f}%"
-    )
+    with rank_tab2:
+        render_ranked_videos(
+            sorted(public_videos, key=lambda x: x["avg_percentage"], reverse=True),
+            "평균 시청률", lambda v: f"{v['avg_percentage']:.1f}%"
+        )
 
-with rank_tab3:
-    render_ranked_videos(
-        sorted(public_videos, key=lambda x: x["sub_conversion_rate"], reverse=True),
-        "구독전환율", lambda v: f"{v['sub_conversion_rate']:.3f}%"
-    )
+    with rank_tab3:
+        render_ranked_videos(
+            sorted(public_videos, key=lambda x: x["sub_conversion_rate"], reverse=True),
+            "구독전환율", lambda v: f"{v['sub_conversion_rate']:.3f}%"
+        )
 
-with rank_tab4:
-    render_ranked_videos(
-        sorted(public_videos, key=lambda x: x["like_rate"], reverse=True),
-        "좋아요율", lambda v: f"{v['like_rate']:.2f}%"
-    )
+    with rank_tab4:
+        render_ranked_videos(
+            sorted(public_videos, key=lambda x: x["like_rate"], reverse=True),
+            "좋아요율", lambda v: f"{v['like_rate']:.2f}%"
+        )
+
 
 
 # =========================================================
@@ -1841,7 +1820,7 @@ with rank_tab4:
 # =========================================================
 
 st.subheader(
-    "📋 전체 영상"
+    "🔎 전체 영상 분석"
 )
 
 
@@ -1943,109 +1922,169 @@ df = pd.DataFrame(
 # 22-1. 영상 검색 / 조회수 필터
 # =========================================================
 
-st.markdown("### 🔎 영상 검색 / 조회수 필터")
 st.caption(
-    "조회수 기준으로 잘된 영상·아쉬운 영상을 따로 모아볼 수 있습니다. "
-    "필터 결과만 엑셀로 내려받는 것도 가능합니다."
+    "조건을 정한 뒤 검색 버튼을 눌러 결과를 확인하세요. "
+    "검색 전에는 기존 결과가 그대로 유지됩니다."
 )
 
-filter_mode = st.radio(
+# 조회수 조건은 바꾸면 입력칸만 바뀌고, 실제 결과는 검색 버튼을 눌러야 적용됩니다.
+filter_mode_input = st.radio(
     "조회수 조건",
     ["전체", "이상", "이하", "범위"],
     horizontal=True,
-    key="views_filter_mode",
+    key="views_filter_mode_input",
 )
 
-filter_min_views = 0
-filter_max_views = 0
+filter_min_input = 0
+filter_max_input = 0
+filter_views_input = 5000
 
-if filter_mode in ["이상", "이하"]:
-    filter_views = st.number_input(
+if filter_mode_input in ["이상", "이하"]:
+    filter_views_input = st.number_input(
         "기준 조회수",
         min_value=0,
         value=5000,
         step=500,
-        key="views_filter_value",
+        key="views_filter_value_input",
     )
-elif filter_mode == "범위":
+elif filter_mode_input == "범위":
     range_c1, range_c2 = st.columns(2)
     with range_c1:
-        filter_min_views = st.number_input(
+        filter_min_input = st.number_input(
             "최소 조회수",
             min_value=0,
             value=1000,
             step=500,
-            key="views_filter_min",
+            key="views_filter_min_input",
         )
     with range_c2:
-        filter_max_views = st.number_input(
+        filter_max_input = st.number_input(
             "최대 조회수",
             min_value=0,
             value=10000,
             step=500,
-            key="views_filter_max",
+            key="views_filter_max_input",
         )
 
 filter_c1, filter_c2 = st.columns(2)
-
 with filter_c1:
     status_options = ["전체"] + sorted(df["상태"].dropna().astype(str).unique().tolist())
-    filter_status = st.selectbox(
+    filter_status_input = st.selectbox(
         "공개 상태",
         status_options,
-        key="video_status_filter",
+        key="video_status_filter_input",
     )
-
 with filter_c2:
-    title_query = st.text_input(
+    title_query_input = st.text_input(
         "제목 검색",
         placeholder="예: 비버, 화산, 교통사고",
-        key="video_title_filter",
+        key="video_title_filter_input",
     )
 
+sort_option_input = st.selectbox(
+    "정렬",
+    [
+        "조회수 높은 순",
+        "조회수 낮은 순",
+        "최신 업로드 순",
+        "오래된 업로드 순",
+        "평균 시청률 높은 순",
+        "구독 증가 높은 순",
+    ],
+    key="video_sort_input",
+)
+
+if "applied_video_filter" not in st.session_state:
+    st.session_state.applied_video_filter = {
+        "mode": "전체",
+        "views": 5000,
+        "min_views": 1000,
+        "max_views": 10000,
+        "status": "전체",
+        "title": "",
+        "sort": "조회수 높은 순",
+    }
+
+if st.button(
+    "🔍 검색",
+    type="primary",
+    use_container_width=True,
+    key="apply_video_filter_button",
+):
+    st.session_state.applied_video_filter = {
+        "mode": filter_mode_input,
+        "views": int(filter_views_input),
+        "min_views": int(filter_min_input),
+        "max_views": int(filter_max_input),
+        "status": filter_status_input,
+        "title": title_query_input.strip(),
+        "sort": sort_option_input,
+    }
+
+applied_filter = st.session_state.applied_video_filter
 filtered_df = df.copy()
 
-if filter_mode == "이상":
-    filtered_df = filtered_df[filtered_df["조회수"] >= int(filter_views)]
-elif filter_mode == "이하":
-    filtered_df = filtered_df[filtered_df["조회수"] <= int(filter_views)]
-elif filter_mode == "범위":
-    low = min(int(filter_min_views), int(filter_max_views))
-    high = max(int(filter_min_views), int(filter_max_views))
+if applied_filter["mode"] == "이상":
+    filtered_df = filtered_df[filtered_df["조회수"] >= applied_filter["views"]]
+elif applied_filter["mode"] == "이하":
+    filtered_df = filtered_df[filtered_df["조회수"] <= applied_filter["views"]]
+elif applied_filter["mode"] == "범위":
+    low = min(applied_filter["min_views"], applied_filter["max_views"])
+    high = max(applied_filter["min_views"], applied_filter["max_views"])
     filtered_df = filtered_df[
-        (filtered_df["조회수"] >= low)
-        & (filtered_df["조회수"] <= high)
+        (filtered_df["조회수"] >= low) & (filtered_df["조회수"] <= high)
     ]
 
-if filter_status != "전체":
-    filtered_df = filtered_df[filtered_df["상태"] == filter_status]
+if applied_filter["status"] != "전체":
+    filtered_df = filtered_df[filtered_df["상태"] == applied_filter["status"]]
 
-if title_query.strip():
+if applied_filter["title"]:
     filtered_df = filtered_df[
         filtered_df["제목"].astype(str).str.contains(
-            title_query.strip(),
-            case=False,
-            na=False,
+            applied_filter["title"], case=False, na=False
         )
     ]
 
-result_count = len(filtered_df)
+# 검색 결과 정렬
+sort_name = applied_filter["sort"]
+if sort_name == "조회수 높은 순":
+    filtered_df = filtered_df.sort_values("조회수", ascending=False)
+elif sort_name == "조회수 낮은 순":
+    filtered_df = filtered_df.sort_values("조회수", ascending=True)
+elif sort_name == "평균 시청률 높은 순":
+    filtered_df = filtered_df.assign(
+        _sort_pct=pd.to_numeric(
+            filtered_df["평균 시청률"].astype(str).str.replace("%", "", regex=False),
+            errors="coerce",
+        )
+    ).sort_values("_sort_pct", ascending=False).drop(columns=["_sort_pct"])
+elif sort_name == "구독 증가 높은 순":
+    filtered_df = filtered_df.sort_values("구독자", ascending=False)
+elif sort_name in ["최신 업로드 순", "오래된 업로드 순"]:
+    filtered_df = filtered_df.assign(
+        _sort_date=pd.to_datetime(filtered_df["업로드"], errors="coerce")
+    ).sort_values(
+        "_sort_date",
+        ascending=(sort_name == "오래된 업로드 순"),
+    ).drop(columns=["_sort_date"])
 
-if result_count:
-    result_avg_views = int(filtered_df["조회수"].mean())
-    result_max_views = int(filtered_df["조회수"].max())
-else:
-    result_avg_views = 0
-    result_max_views = 0
+result_count = len(filtered_df)
+result_avg_views = int(filtered_df["조회수"].mean()) if result_count else 0
+result_max_views = int(filtered_df["조회수"].max()) if result_count else 0
 
 fc1, fc2, fc3 = st.columns(3)
-fc1.metric("검색된 영상", f"{result_count:,}개")
+fc1.metric("검색 영상", f"{result_count:,}개")
 fc2.metric("평균 조회수", f"{result_avg_views:,}회")
 fc3.metric("최고 조회수", f"{result_max_views:,}회")
 
+st.caption(
+    f"현재 적용: 조회수 {applied_filter['mode']} · "
+    f"상태 {applied_filter['status']} · 정렬 {applied_filter['sort']}"
+)
+
 with st.expander(
-    f"필터 결과 영상 보기 ({result_count:,}개)",
-    expanded=(result_count <= 10 and result_count > 0),
+    f"📋 검색 결과 보기 ({result_count:,}개)",
+    expanded=(0 < result_count <= 10),
 ):
     if filtered_df.empty:
         st.info("조건에 맞는 영상이 없습니다.")
@@ -2062,27 +2101,27 @@ with st.expander(
 # 22-2. 엑셀 다운로드
 # =========================================================
 
-def make_excel_file(all_videos_df, filtered_videos_df):
+def make_excel_file(primary_df, primary_sheet_name):
+    """사용자가 열자마자 영상 데이터가 먼저 보이도록 첫 시트에 실제 데이터를 둡니다."""
     output = BytesIO()
 
     summary_rows = [
-        ["채널명", channel_info.get("title", "")],
+        ["채널명", channel_info.get("channel_name", channel_info.get("title", ""))],
         ["구독자", channel_info.get("subscribers", 0)],
-        ["채널 총 조회수", channel_info.get("views", 0)],
+        ["채널 총 조회수", channel_info.get("total_views", channel_info.get("views", 0))],
         ["전체 감지 영상", len(videos)],
         ["공개 영상", len(public_videos)],
         ["예약 영상", len(scheduled_videos)],
-        ["필터 결과 영상", len(filtered_videos_df)],
+        ["내보낸 영상", len(primary_df)],
         ["생성 시각", datetime.now(KST).strftime("%Y-%m-%d %H:%M:%S KST")],
     ]
     summary_df = pd.DataFrame(summary_rows, columns=["항목", "값"])
 
     with pd.ExcelWriter(output, engine="openpyxl") as writer:
+        # 핵심 수정: 영상 데이터 시트를 첫 번째로 저장
+        primary_df.to_excel(writer, sheet_name=primary_sheet_name, index=False)
         summary_df.to_excel(writer, sheet_name="채널 요약", index=False)
-        all_videos_df.to_excel(writer, sheet_name="전체 영상", index=False)
-        filtered_videos_df.to_excel(writer, sheet_name="필터 결과", index=False)
 
-        # 보기 편하게 기본 열 너비 자동 조절
         for sheet_name in writer.book.sheetnames:
             ws = writer.book[sheet_name]
             for column_cells in ws.columns:
@@ -2102,16 +2141,13 @@ def make_excel_file(all_videos_df, filtered_videos_df):
     output.seek(0)
     return output.getvalue()
 
-
-excel_bytes = make_excel_file(df, filtered_df)
-
 st.markdown("### 📥 엑셀 다운로드")
 download_c1, download_c2 = st.columns(2)
 
 with download_c1:
     st.download_button(
         "📥 전체 영상 엑셀",
-        data=make_excel_file(df, df),
+        data=make_excel_file(df, "전체 영상"),
         file_name=f"shorts_all_videos_{today.strftime('%Y%m%d')}.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         use_container_width=True,
@@ -2119,16 +2155,15 @@ with download_c1:
 
 with download_c2:
     st.download_button(
-        f"📥 필터 결과 엑셀 ({result_count}개)",
-        data=excel_bytes,
+        f"📥 검색 결과 엑셀 ({result_count}개)",
+        data=make_excel_file(filtered_df, "검색 결과") if result_count else b"",
         file_name=f"shorts_filtered_videos_{today.strftime('%Y%m%d')}.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         use_container_width=True,
         disabled=result_count == 0,
     )
 
-
-with st.expander("전체 영상 표 펼쳐보기", expanded=False):
+with st.expander("📋 전체 영상 표 펼쳐보기", expanded=False):
     st.dataframe(
         df,
         use_container_width=True,
