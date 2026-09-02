@@ -1533,6 +1533,16 @@ if st.button(
 selected_day = st.session_state.applied_detail_day
 st.caption(f"현재 조회 중인 날짜: {selected_day}")
 
+# 오늘 데이터는 YouTube Analytics의 일별 집계가 아직 완료되지 않았을 수 있음
+is_today_detail = selected_day == today
+if is_today_detail:
+    st.warning(
+        "⏳ 오늘 데이터는 아직 집계 중일 수 있습니다. "
+        "아래 '그날 조회수·순구독자·시청시간·좋아요'가 0으로 보여도 "
+        "실제 현재 조회수가 0이라는 뜻은 아닙니다. "
+        "영상 아래쪽의 '현재 조회수'는 실시간에 가까운 누적값이라 서로 다를 수 있습니다."
+    )
+
 
 try:
 
@@ -1676,9 +1686,10 @@ if day_summary:
         f"{old_video_share:.1f}% 기여",
     )
 
-    if selected_day == today and day_total_views == 0:
-        st.caption(
-            "※ 오늘 Analytics가 아직 반영되지 않았다면 위 구성도 0으로 표시될 수 있습니다."
+    if is_today_detail and day_total_views == 0:
+        st.info(
+            "📌 현재 0회는 '확정 0회'가 아니라 Analytics 일별 집계 대기일 가능성이 있습니다. "
+            "오늘 업로드 영상의 실제 누적 조회수는 아래 '그날 업로드한 영상'의 현재 조회수를 확인하세요."
         )
 
 
