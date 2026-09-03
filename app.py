@@ -765,7 +765,8 @@ st.success(
 # =========================================================
 # V6.4 2차 — 실제 화면 전환 메뉴
 # =========================================================
-st.markdown("### 🧭 메뉴")
+st.markdown("## 🧭 Shorts Scope")
+st.caption("전체를 한 번에 보거나, 필요한 화면만 골라서 볼 수 있습니다.")
 
 page = st.radio(
     "화면 선택",
@@ -783,6 +784,40 @@ _page_help = {
     "📊 채널 분석": "최근 영상 묶음 · 요일/시간 · 소재 분석이 들어갈 자리",
     "🔎 영상": "검색 · 전체 데이터 · TOP 순위 · Excel · 예약 영상",
 }
+
+st.markdown("""
+<style>
+/* V6.4 readability polish */
+.stCaption, [data-testid="stCaptionContainer"], [data-testid="stCaptionContainer"] p {
+    color: rgba(20, 24, 35, 0.76) !important;
+    font-size: 0.88rem !important;
+    line-height: 1.45 !important;
+}
+.stMarkdown p {
+    color: rgba(20, 24, 35, 0.90);
+}
+[data-testid="stAlert"] p {
+    color: rgba(20, 24, 35, 0.88) !important;
+}
+[data-testid="stMetricLabel"] p {
+    color: rgba(20, 24, 35, 0.84) !important;
+}
+[data-testid="stMetricValue"] {
+    color: rgb(20, 24, 35) !important;
+}
+div[role="radiogroup"] label p {
+    color: rgba(20, 24, 35, 0.92) !important;
+    font-weight: 600 !important;
+}
+div[role="radiogroup"] {
+    gap: 0.45rem;
+}
+div[data-baseweb="select"] * {
+    color: rgba(20, 24, 35, 0.92) !important;
+}
+</style>
+""", unsafe_allow_html=True)
+
 st.caption(_page_help[page])
 st.divider()
 
@@ -809,6 +844,9 @@ def add_excel_table(ws, table_name):
 
 
 if page in ("🧾 전체 보기", "🏠 홈"):
+    if page == "🧾 전체 보기":
+        st.markdown("## ① 🏠 채널 요약")
+        st.caption("채널 전체 상태와 공개 영상 누적 성과")
     st.subheader(
         f"📺 {channel_info['channel_name']}"
     )
@@ -950,6 +988,10 @@ if page in ("🧾 전체 보기", "🏠 홈"):
     st.divider()
 
 if page in ("🧾 전체 보기", "📅 기간·달력"):
+    if page == "🧾 전체 보기":
+        st.divider()
+        st.markdown("## ② 📅 기간·달력")
+        st.caption("기간 성과부터 월간 달력과 하루 상세까지")
     # =========================================================
     # 12. 날짜 / 기간 분석
     # =========================================================
@@ -1987,6 +2029,10 @@ if page in ("🧾 전체 보기", "📅 기간·달력"):
     st.divider()
 
 if page in ("🧾 전체 보기", "📈 성장 분석"):
+    if page == "🧾 전체 보기":
+        st.divider()
+        st.markdown("## ③ 📈 성장 분석")
+        st.caption("채널 기준선과 영상별 D+N 성장 비교")
     # =========================================================
     # 20. 자동 성과 리포트 V6
     # =========================================================
@@ -2484,6 +2530,10 @@ if page == "📊 채널 분석":
     st.caption("지금은 자리만 먼저 만들어 두어 앞으로 기능이 늘어나도 화면이 다시 길어지지 않게 했습니다.")
 
 if page in ("🧾 전체 보기", "🔎 영상"):
+    if page == "🧾 전체 보기":
+        st.divider()
+        st.markdown("## ④ 🔎 영상 찾기")
+        st.caption("검색 · 전체 데이터 · TOP 순위 · Excel · 예약 영상")
     # =========================================================
     # 21. 전체 영상 분석
     # =========================================================
