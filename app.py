@@ -1938,7 +1938,7 @@ st.divider()
 # 20. 자동 성과 리포트 V6
 # =========================================================
 
-st.header("🧠 자동 성과 리포트 V6.1")
+st.header("🧠 자동 성과 리포트 V6.2")
 st.caption(f"🕒 데이터 조회 시각: {datetime.now(KST).strftime('%Y-%m-%d %H:%M KST')} · 최근 날짜의 Analytics는 지연될 수 있습니다.")
 st.caption(
     "원인을 추측하지 않고 실제 데이터와 내 채널 기준선만 비교합니다. "
@@ -2103,6 +2103,83 @@ if report_videos:
     b5.metric("평균 구독전환율", f"{base_sub:.3f}%")
     st.caption("※ 위 기준선은 현재 분석 가능한 내 영상들의 비교값이며 YouTube 공식 기준이 아닙니다.")
 
+    # -----------------------------
+    # 영상 나이 / 성장 참고
+    # -----------------------------
+    st.markdown("### ⏱️ 영상 나이 · 성장 참고")
+    st.caption(
+        "현재 누적 조회수를 업로드 후 경과일로 나눈 참고값입니다. "
+        "과거 같은 시점의 실제 조회수를 복원한 값은 아니므로 '동일 시점 성장곡선'과는 다릅니다."
+    )
+
+    age_rows = []
+    for _v in report_videos:
+        _raw = _v.get("published_raw")
+        if not _raw:
+            continue
+        try:
+            _dt = datetime.fromisoformat(_raw.replace("Z", "+00:00")).astimezone(KST)
+            _published_date = _dt.date()
+            _age_days = max((today - _published_date).days, 0)
+        except Exception:
+            continue
+
+        # 업로드 당일은 1일로 나눠 0 division 방지.
+        _days_for_rate = max(_age_days, 1)
+        _views_per_day = _v.get("views", 0) / _days_for_rate
+
+        age_rows.append({
+            "video_id": _v.get("video_id"),
+            "제목": _v.get("title", ""),
+            "업로드일": _published_date.strftime("%Y.%m.%d"),
+            "경과일": _age_days,
+            "현재 조회수": int(_v.get("views", 0)),
+            "일평균 조회수(참고)": _views_per_day,
+        })
+
+    if age_rows:
+        _speed_values = sorted(row["일평균 조회수(참고)"] for row in age_rows)
+
+        def _speed_percentile(value):
+            if len(_speed_values) == 1:
+                return 100.0
+            below_or_equal = sum(1 for x in _speed_values if x <= value)
+            return (below_or_equal - 1) / (len(_speed_values) - 1) * 100
+
+        for row in age_rows:
+            row["성장속도 백분위(참고)"] = _speed_percentile(row["일평균 조회수(참고)"])
+
+        age_rows = sorted(
+            age_rows,
+            key=lambda r: r["성장속도 백분위(참고)"],
+            reverse=True,
+        )
+
+        age_display = pd.DataFrame([
+            {
+                "영상": row["제목"],
+                "업로드": row["업로드일"],
+                "경과": f"{row['경과일']}일",
+                "현재 조회수": f"{row['현재 조회수']:,}회",
+                "조회수 ÷ 경과일": f"{row['일평균 조회수(참고)']:,.0f}회/일",
+                "채널 내 위치": f"상위 {max(1, round(100 - row['성장속도 백분위(참고)']))}%",
+            }
+            for row in age_rows
+        ])
+
+        st.dataframe(
+            age_display,
+            hide_index=True,
+            use_container_width=True,
+        )
+        st.info(
+            "📌 이 표의 '상위 %'는 현재 누적 조회수를 경과일로 나눈 값끼리 비교한 참고치입니다. "
+            "업로드 후 24시간·3일·7일의 실제 성과를 비교하려면 영상별 일별 기록을 따로 저장하거나 "
+            "YouTube Analytics의 영상별 일자 데이터를 추가로 수집해야 합니다."
+        )
+    else:
+        st.info("업로드 날짜를 확인할 수 있는 분석 대상 영상이 없습니다.")
+
     st.markdown("### 🔬 영상별 데이터 비교")
     st.caption("기본 화면은 압축되어 있습니다. 영상을 누르면 채널 기준선과 실제 차이를 확인할 수 있습니다.")
 
@@ -2151,7 +2228,7 @@ if report_videos:
                 published_date = published_dt.date()
                 age_days = max((today - published_date).days, 0)
                 published_text = published_date.strftime("%Y.%m.%d")
-                age_text = f" · 업로드 {age_days}일차"
+                age_text = f" · 업로드 후 {age_days}일"
             except Exception:
                 pass
 
