@@ -27,6 +27,7 @@ from analytics import (
     get_daily_channel_data,
     get_video_performance_for_day,
     get_video_analytics,
+    get_daily_video_analytics,
     get_previous_period,
     calculate_change,
 )
@@ -1909,7 +1910,7 @@ if public_videos:
     )
 
     c1.metric(
-        "평균 조회수",
+        "전체 공개 영상 평균 조회수",
         f"{average_views:,.0f}회"
     )
 
@@ -1938,7 +1939,7 @@ st.divider()
 # 20. 자동 성과 리포트 V6
 # =========================================================
 
-st.header("🧠 자동 성과 리포트 V6.2")
+st.header("🧠 자동 성과 리포트 V6.3")
 st.caption(f"🕒 데이터 조회 시각: {datetime.now(KST).strftime('%Y-%m-%d %H:%M KST')} · 최근 날짜의 Analytics는 지연될 수 있습니다.")
 st.caption(
     "원인을 추측하지 않고 실제 데이터와 내 채널 기준선만 비교합니다. "
@@ -2040,9 +2041,15 @@ if trend_now and trend_prev:
         f"현재 {trend_start} ~ {trend_end} ↔ 이전 {trend_prev_start} ~ {trend_prev_end} · 오늘 제외"
     )
 
+    _views_change_text = (
+        "비교 주의"
+        if prev_uploads == 0
+        else _trend_change(trend_now["views"], trend_prev["views"])
+    )
+
     trend_table = pd.DataFrame([
         ["조회수", f"{trend_now['views']:,}회", f"{trend_prev['views']:,}회",
-         _trend_change(trend_now["views"], trend_prev["views"])],
+         _views_change_text],
         ["시청시간", f"{trend_now['watch_minutes']/60:,.1f}시간",
          f"{trend_prev['watch_minutes']/60:,.1f}시간",
          _trend_change(trend_now["watch_minutes"], trend_prev["watch_minutes"])],
@@ -2096,92 +2103,158 @@ if report_videos:
 
     st.markdown("### 📊 내 채널 기준선")
     b1,b2,b3,b4,b5=st.columns(5)
-    b1.metric("평균 조회수", f"{base_views:,.0f}회")
-    b2.metric("중앙 조회수", f"{median_views:,.0f}회")
+    b1.metric("분석 대상 평균 조회수", f"{base_views:,.0f}회")
+    b2.metric("분석 대상 중앙 조회수", f"{median_views:,.0f}회")
     b3.metric("평균 시청률", f"{base_ret:.1f}%")
     b4.metric("평균 좋아요율", f"{base_like:.2f}%")
     b5.metric("평균 구독전환율", f"{base_sub:.3f}%")
     st.caption("※ 위 기준선은 현재 분석 가능한 내 영상들의 비교값이며 YouTube 공식 기준이 아닙니다.")
 
-    # -----------------------------
-    # 영상 나이 / 성장 참고
-    # -----------------------------
-    st.markdown("### ⏱️ 영상 나이 · 성장 참고")
+    st.markdown("### 🔬 영상별 데이터 비교")
     st.caption(
-        "현재 누적 조회수를 업로드 후 경과일로 나눈 참고값입니다. "
-        "과거 같은 시점의 실제 조회수를 복원한 값은 아니므로 '동일 시점 성장곡선'과는 다릅니다."
+        "한 줄에는 현재 성과만 간단히 표시합니다. 영상을 누르면 기준선 비교와 실제 일별 성장 흐름을 확인할 수 있습니다."
     )
 
-    age_rows = []
-    for _v in report_videos:
-        _raw = _v.get("published_raw")
-        if not _raw:
-            continue
+    # 실제 영상별 일별 Analytics는 한 번만 가져와 아래 모든 성장 비교에서 재사용합니다.
+    try:
+        _report_ids = [v["video_id"] for v in report_videos]
+        _published_dates_pt = []
+        _PT = ZoneInfo("America/Los_Angeles")
+        for _v in report_videos:
+            _raw = _v.get("published_raw")
+            if not _raw:
+                continue
+            try:
+                _pdt = datetime.fromisoformat(_raw.replace("Z", "+00:00")).astimezone(_PT)
+                _published_dates_pt.append(_pdt.date())
+            except Exception:
+                pass
+
+        _growth_start = min(_published_dates_pt) if _published_dates_pt else today - timedelta(days=90)
+        _growth_end = today - timedelta(days=1)
+
+        daily_video_growth = (
+            get_daily_video_analytics(
+                yt_analytics,
+                _report_ids,
+                _growth_start,
+                _growth_end,
+            )
+            if _growth_start <= _growth_end
+            else {}
+        )
+        growth_error = None
+    except Exception as _growth_exc:
+        daily_video_growth = {}
+        growth_error = str(_growth_exc)
+
+    def _published_pt_date(video):
+        raw = video.get("published_raw")
+        if not raw:
+            return None
         try:
-            _dt = datetime.fromisoformat(_raw.replace("Z", "+00:00")).astimezone(KST)
-            _published_date = _dt.date()
-            _age_days = max((today - _published_date).days, 0)
+            return datetime.fromisoformat(raw.replace("Z", "+00:00")).astimezone(
+                ZoneInfo("America/Los_Angeles")
+            ).date()
         except Exception:
-            continue
+            return None
 
-        # 업로드 당일은 1일로 나눠 0 division 방지.
-        _days_for_rate = max(_age_days, 1)
-        _views_per_day = _v.get("views", 0) / _days_for_rate
+    def _growth_series(video):
+        pub_date = _published_pt_date(video)
+        if not pub_date:
+            return []
 
-        age_rows.append({
-            "video_id": _v.get("video_id"),
-            "제목": _v.get("title", ""),
-            "업로드일": _published_date.strftime("%Y.%m.%d"),
-            "경과일": _age_days,
-            "현재 조회수": int(_v.get("views", 0)),
-            "일평균 조회수(참고)": _views_per_day,
-        })
+        rows = daily_video_growth.get(video.get("video_id"), [])
+        by_date = {str(r.get("date")): int(r.get("views", 0)) for r in rows}
 
-    if age_rows:
-        _speed_values = sorted(row["일평균 조회수(참고)"] for row in age_rows)
+        # Analytics 날짜 기준 D0부터 어제까지. 없는 날짜는 0회로 채움.
+        last_day = today - timedelta(days=1)
+        if pub_date > last_day:
+            return []
 
-        def _speed_percentile(value):
-            if len(_speed_values) == 1:
-                return 100.0
-            below_or_equal = sum(1 for x in _speed_values if x <= value)
-            return (below_or_equal - 1) / (len(_speed_values) - 1) * 100
+        out = []
+        cumulative = 0
+        d = pub_date
+        age = 0
+        while d <= last_day:
+            views = by_date.get(d.isoformat(), 0)
+            cumulative += views
+            out.append({
+                "D": age,
+                "date": d,
+                "daily_views": views,
+                "cumulative_views": cumulative,
+            })
+            d += timedelta(days=1)
+            age += 1
+        return out
 
-        for row in age_rows:
-            row["성장속도 백분위(참고)"] = _speed_percentile(row["일평균 조회수(참고)"])
+    growth_cache = {
+        v["video_id"]: _growth_series(v)
+        for v in report_videos
+    }
 
-        age_rows = sorted(
-            age_rows,
-            key=lambda r: r["성장속도 백분위(참고)"],
-            reverse=True,
-        )
+    def _cum_at(video, d_index):
+        series = growth_cache.get(video.get("video_id"), [])
+        if len(series) <= d_index:
+            return None
+        return series[d_index]["cumulative_views"]
 
-        age_display = pd.DataFrame([
-            {
-                "영상": row["제목"],
-                "업로드": row["업로드일"],
-                "경과": f"{row['경과일']}일",
-                "현재 조회수": f"{row['현재 조회수']:,}회",
-                "조회수 ÷ 경과일": f"{row['일평균 조회수(참고)']:,.0f}회/일",
-                "채널 내 위치": f"상위 {max(1, round(100 - row['성장속도 백분위(참고)']))}%",
-            }
-            for row in age_rows
-        ])
+    def _comparison_for(video):
+        series = growth_cache.get(video.get("video_id"), [])
+        if not series:
+            return None
 
-        st.dataframe(
-            age_display,
-            hide_index=True,
-            use_container_width=True,
-        )
-        st.info(
-            "📌 이 표의 '상위 %'는 현재 누적 조회수를 경과일로 나눈 값끼리 비교한 참고치입니다. "
-            "업로드 후 24시간·3일·7일의 실제 성과를 비교하려면 영상별 일별 기록을 따로 저장하거나 "
-            "YouTube Analytics의 영상별 일자 데이터를 추가로 수집해야 합니다."
-        )
-    else:
-        st.info("업로드 날짜를 확인할 수 있는 분석 대상 영상이 없습니다.")
+        max_d = series[-1]["D"]
+        milestone = 3 if max_d >= 3 else (1 if max_d >= 1 else 0)
+        current_value = _cum_at(video, milestone)
+        if current_value is None:
+            return None
 
-    st.markdown("### 🔬 영상별 데이터 비교")
-    st.caption("기본 화면은 압축되어 있습니다. 영상을 누르면 채널 기준선과 실제 차이를 확인할 수 있습니다.")
+        peers = []
+        for other in report_videos:
+            val = _cum_at(other, milestone)
+            if val is not None:
+                peers.append((other.get("video_id"), val))
+
+        if not peers:
+            return None
+
+        values = [x[1] for x in peers]
+        median = float(pd.Series(values).median())
+        rank = 1 + sum(1 for _, val in peers if val > current_value)
+
+        return {
+            "milestone": milestone,
+            "value": current_value,
+            "median": median,
+            "rank": rank,
+            "sample": len(peers),
+        }
+
+    def _growth_state(video):
+        series = growth_cache.get(video.get("video_id"), [])
+        if len(series) < 4:
+            return "데이터 축적 중"
+
+        daily = [x["daily_views"] for x in series]
+        recent = daily[-2:]
+        previous = daily[-4:-2]
+
+        recent_avg = sum(recent) / len(recent)
+        previous_avg = sum(previous) / len(previous)
+
+        # 오래된 영상이 다시 살아나는 경우
+        if previous_avg > 0 and recent_avg >= previous_avg * 2 and recent_avg >= 100:
+            return "🔥 재상승"
+        if previous_avg == 0:
+            return "↗ 성장 중" if recent_avg > 0 else "→ 정체"
+        ratio = recent_avg / previous_avg
+        if ratio >= 1.25:
+            return "↗ 성장 중"
+        if ratio <= 0.60:
+            return "↘ 둔화"
+        return "→ 유지"
 
     ordered=sorted(report_videos,key=lambda v:v.get("views",0),reverse=True)
 
@@ -2232,9 +2305,23 @@ if report_videos:
             except Exception:
                 pass
 
-        summary=(f"📅 {published_text}{age_text} | "
-                 f"조회수 {v['views']:,} · 시청률 {v['avg_percentage']:.1f}% · "
-                 f"좋아요 {v['like_rate']:.2f}% · 구독 {v['sub_conversion_rate']:.3f}%")
+        _comp = _comparison_for(v)
+        _state = _growth_state(v)
+
+        if _comp and _comp["sample"] >= 5:
+            _same_age_text = (
+                f"D+{_comp['milestone']} {_comp['rank']}위/{_comp['sample']}개"
+            )
+        elif _comp:
+            _same_age_text = f"비교 데이터 부족({_comp['sample']}개)"
+        else:
+            _same_age_text = "성장 데이터 집계 중"
+
+        summary = (
+            f"📅 {published_text}{age_text} | "
+            f"조회수 {v['views']:,} | {_same_age_text} | {_state}"
+        )
+
         with st.expander(f"{rank}. {v['title']}  |  {summary}"):
             rows=[
                 ["조회수",f"{v['views']:,}회",f"{base_views:,.0f}회",pct_diff(v["views"],base_views)],
@@ -2244,6 +2331,72 @@ if report_videos:
             ]
             st.dataframe(pd.DataFrame(rows,columns=["지표","이 영상","채널 기준선","차이"]),
                          hide_index=True,use_container_width=True)
+
+            st.markdown("**실제 성장 흐름**")
+            _series = growth_cache.get(v.get("video_id"), [])
+
+            if growth_error:
+                st.caption("영상별 일별 Analytics를 불러오지 못해 성장 비교는 표시하지 않습니다.")
+            elif not _series:
+                st.caption("아직 일별 Analytics가 충분히 집계되지 않았습니다.")
+            else:
+                _milestone_rows = []
+                for _d in [0, 1, 3, 7, 14, 28]:
+                    _value = _cum_at(v, _d)
+                    if _value is not None:
+                        _milestone_rows.append({
+                            "시점": f"D+{_d}",
+                            "누적 조회수": f"{_value:,}회",
+                        })
+
+                if _milestone_rows:
+                    st.dataframe(
+                        pd.DataFrame(_milestone_rows),
+                        hide_index=True,
+                        use_container_width=True,
+                    )
+
+                if _comp:
+                    if _comp["sample"] >= 5:
+                        _median_diff = (
+                            None if _comp["median"] == 0
+                            else ((_comp["value"] - _comp["median"]) / _comp["median"]) * 100
+                        )
+                        _diff_text = (
+                            "비교 불가"
+                            if _median_diff is None
+                            else f"{_median_diff:+.1f}%"
+                        )
+                        st.write(
+                            f"**D+{_comp['milestone']} 동일 시점:** "
+                            f"{_comp['rank']}위 / {_comp['sample']}개 · "
+                            f"채널 중앙값 {_comp['median']:,.0f}회 · "
+                            f"중앙값 대비 {_diff_text}"
+                        )
+                    else:
+                        st.caption(
+                            f"D+{_comp['milestone']} 비교 가능 영상이 {_comp['sample']}개라 "
+                            "순위 평가는 보류합니다."
+                        )
+
+                _chart_df = pd.DataFrame([
+                    {
+                        "업로드 후": f"D+{x['D']}",
+                        "이 영상 누적 조회수": x["cumulative_views"],
+                    }
+                    for x in _series[:29]
+                ])
+                if not _chart_df.empty:
+                    _chart_df = _chart_df.set_index("업로드 후")
+                    st.line_chart(
+                        _chart_df,
+                        use_container_width=True,
+                        height=220,
+                    )
+                    st.caption(
+                        "※ D+N은 YouTube Analytics의 날짜 단위 데이터 기준입니다. "
+                        "정확한 업로드 후 N×24시간 값과는 다를 수 있습니다."
+                    )
 
             high=[]; low=[]; similar=[]
             for name,val,base in [
