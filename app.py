@@ -1685,7 +1685,7 @@ if page in ("🧾 전체 보기", "📅 기간·달력"):
     # =========================================================
 
     st.header(
-        "🔎 하루 자세히 보기"
+        "🕘 과거 일별 분석"
     )
 
     if "applied_detail_day" not in st.session_state:
@@ -1694,11 +1694,18 @@ if page in ("🧾 전체 보기", "📅 기간·달력"):
             end_date,
         )
 
+    # 최근 일별 Analytics는 지연될 수 있으므로 D-2까지만 허용
+    _detail_max_day = today - timedelta(days=2)
+    if "detail_day_input" in st.session_state:
+        _saved_detail_day = st.session_state["detail_day_input"]
+        if _saved_detail_day is not None and _saved_detail_day > _detail_max_day:
+            st.session_state["detail_day_input"] = _detail_max_day
+
     detail_day_input = st.date_input(
         "확인할 날짜",
         value=st.session_state.get("calendar_selected_day", end_date),
         min_value=date(2005, 1, 1),
-        max_value=today - timedelta(days=2),
+        max_value=_detail_max_day,
         key="detail_day_input",
     )
     st.session_state.calendar_selected_day = detail_day_input
