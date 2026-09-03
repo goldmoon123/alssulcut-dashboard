@@ -1193,7 +1193,7 @@ if page in ("🧾 전체 보기", "📅 기간·달력"):
 
 
     c2.metric(
-        "순구독자",
+        "기간 내 순증가",
         (
             f"{current_summary['net_subscribers']:+,}명"
         ),
@@ -1698,7 +1698,7 @@ if page in ("🧾 전체 보기", "📅 기간·달력"):
         "확인할 날짜",
         value=st.session_state.get("calendar_selected_day", end_date),
         min_value=date(2005, 1, 1),
-        max_value=today,
+        max_value=today - timedelta(days=2),
         key="detail_day_input",
     )
     st.session_state.calendar_selected_day = detail_day_input
