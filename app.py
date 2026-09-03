@@ -1538,14 +1538,14 @@ if st.button(
 selected_day = st.session_state.applied_detail_day
 st.caption(f"현재 조회 중인 날짜: {selected_day}")
 
-# 오늘 데이터는 YouTube Analytics의 일별 집계가 아직 완료되지 않았을 수 있음
-is_today_detail = selected_day == today
-if is_today_detail:
+# 최근 날짜는 YouTube Analytics의 일별 집계가 아직 완료되지 않았을 수 있음
+detail_age_days = (today - selected_day).days
+is_recent_detail = 0 <= detail_age_days <= 2
+if is_recent_detail:
     st.warning(
-        "⏳ 오늘 데이터는 아직 집계 중일 수 있습니다. "
-        "아래 '그날 조회수·순구독자·시청시간·좋아요'가 0으로 보여도 "
-        "실제 현재 조회수가 0이라는 뜻은 아닙니다. "
-        "영상 아래쪽의 '현재 조회수'는 실시간에 가까운 누적값이라 서로 다를 수 있습니다."
+        "⏳ 최근 날짜의 YouTube Analytics 데이터는 아직 집계 중일 수 있습니다. "
+        "아래 일별 수치가 0으로 보여도 실제 0이라고 단정할 수 없습니다. "
+        "영상 아래의 '현재 조회수'는 누적값이고, 여기의 '그날 조회수'는 날짜별 Analytics 값입니다."
     )
 
 
