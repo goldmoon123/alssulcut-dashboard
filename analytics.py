@@ -649,6 +649,92 @@ def get_video_analytics(
     return analytics_by_video
 
 
+
+# =========================================================
+# 영상별 일별 Analytics
+# - 실제 YouTube Analytics의 day × video 데이터를 반환
+# - 성장곡선 / D+N 누적 비교용
+# =========================================================
+
+def get_daily_video_analytics(
+    analytics,
+    video_ids,
+    start_date="2005-01-01",
+    end_date=None,
+):
+    if not video_ids:
+        return {}
+
+    if end_date is None:
+        end_date = date.today()
+
+    start_date = to_date_string(start_date)
+    end_date = to_date_string(end_date)
+
+    result = {}
+
+    # 필터 길이와 응답 크기를 줄이기 위해 25개씩 요청
+    for i in range(0, len(video_ids), 25):
+        batch = video_ids[i:i + 25]
+
+        response = (
+            analytics
+            .reports()
+            .query(
+                ids="channel==MINE",
+                startDate=start_date,
+                endDate=end_date,
+                dimensions="day,video",
+                filters="video==" + ",".join(batch),
+                metrics=(
+                    "views,"
+                    "estimatedMinutesWatched,"
+                    "likes,"
+                    "comments,"
+                    "shares,"
+                    "subscribersGained,"
+                    "subscribersLost"
+                ),
+                sort="day",
+                maxResults=5000,
+            )
+            .execute()
+        )
+
+        headers = [
+            header["name"]
+            for header in response.get("columnHeaders", [])
+        ]
+
+        for row in response.get("rows", []):
+            data = dict(zip(headers, row))
+            video_id = data.get("video")
+            day = data.get("day")
+
+            if not video_id or not day:
+                continue
+
+            gained = int(data.get("subscribersGained", 0))
+            lost = int(data.get("subscribersLost", 0))
+
+            result.setdefault(video_id, []).append({
+                "date": day,
+                "views": int(data.get("views", 0)),
+                "watch_minutes": float(data.get("estimatedMinutesWatched", 0)),
+                "likes": int(data.get("likes", 0)),
+                "comments": int(data.get("comments", 0)),
+                "shares": int(data.get("shares", 0)),
+                "subscribers_gained": gained,
+                "subscribers_lost": lost,
+                "net_subscribers": gained - lost,
+            })
+
+    for video_id in result:
+        result[video_id].sort(key=lambda x: x["date"])
+
+    return result
+
+
 # =========================================================
 # 이전 동일 기간 계산
 #
