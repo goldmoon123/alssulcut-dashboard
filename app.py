@@ -769,13 +769,14 @@ st.markdown("### 🧭 메뉴")
 
 page = st.radio(
     "화면 선택",
-    ["🏠 홈", "📅 기간·달력", "📈 성장 분석", "📊 채널 분석", "🔎 영상"],
+    ["🧾 전체 보기", "🏠 홈", "📅 기간·달력", "📈 성장 분석", "📊 채널 분석", "🔎 영상"],
     horizontal=True,
     label_visibility="collapsed",
     key="main_page_v64",
 )
 
 _page_help = {
+    "🧾 전체 보기": "기존처럼 모든 주요 기능을 위에서 아래로 한 번에 확인",
     "🏠 홈": "채널 전체 상태와 공개 영상 누적 성과",
     "📅 기간·달력": "기간 성과 · 일별 차트 · 월간 달력 · 하루 상세",
     "📈 성장 분석": "채널 기준선 · 영상별 D+N 성장 비교",
@@ -785,8 +786,29 @@ _page_help = {
 st.caption(_page_help[page])
 st.divider()
 
+# 각 메뉴가 독립적으로 실행되어도 필요한 공통 값
+today = datetime.now(KST).date()
 
-if page == "🏠 홈":
+
+def add_excel_table(ws, table_name):
+    """Excel 실제 표(Table) + 필터/정렬."""
+    if ws.max_row < 2 or ws.max_column < 1:
+        return
+    safe_name = re.sub(r"[^A-Za-z0-9_]", "_", table_name)
+    if not safe_name or safe_name[0].isdigit():
+        safe_name = "T_" + safe_name
+    table = Table(displayName=safe_name, ref=ws.dimensions)
+    table.tableStyleInfo = TableStyleInfo(
+        name="TableStyleMedium2",
+        showFirstColumn=False,
+        showLastColumn=False,
+        showRowStripes=True,
+        showColumnStripes=False,
+    )
+    ws.add_table(table)
+
+
+if page in ("🧾 전체 보기", "🏠 홈"):
     st.subheader(
         f"📺 {channel_info['channel_name']}"
     )
@@ -927,7 +949,7 @@ if page == "🏠 홈":
 
     st.divider()
 
-elif page == "📅 기간·달력":
+if page in ("🧾 전체 보기", "📅 기간·달력"):
     # =========================================================
     # 12. 날짜 / 기간 분석
     # =========================================================
@@ -945,8 +967,6 @@ elif page == "📅 기간·달력":
     # ---------------------------------------------------------
     # 기간 선택 + 분석하기 버튼
     # ---------------------------------------------------------
-
-    today = datetime.now(KST).date()
 
     # 처음 들어왔을 때는 최근 7일을 기본 적용
     if "applied_period_option" not in st.session_state:
@@ -1263,24 +1283,6 @@ elif page == "📅 기간·달력":
         st.info("선택한 기간에 일별 Analytics 데이터가 없습니다.")
 
     st.divider()
-
-
-    def add_excel_table(ws, table_name):
-        """Excel 실제 표(Table) + 필터/정렬."""
-        if ws.max_row < 2 or ws.max_column < 1:
-            return
-        safe_name = re.sub(r"[^A-Za-z0-9_]", "_", table_name)
-        if not safe_name or safe_name[0].isdigit():
-            safe_name = "T_" + safe_name
-        table = Table(displayName=safe_name, ref=ws.dimensions)
-        table.tableStyleInfo = TableStyleInfo(
-            name="TableStyleMedium2",
-            showFirstColumn=False,
-            showLastColumn=False,
-            showRowStripes=True,
-            showColumnStripes=False,
-        )
-        ws.add_table(table)
 
 
     def call_with_retry(func, *args, attempts=2, delay=0.35, **kwargs):
@@ -1984,7 +1986,7 @@ elif page == "📅 기간·달력":
 
     st.divider()
 
-elif page == "📈 성장 분석":
+if page in ("🧾 전체 보기", "📈 성장 분석"):
     # =========================================================
     # 20. 자동 성과 리포트 V6
     # =========================================================
@@ -2475,13 +2477,13 @@ elif page == "📈 성장 분석":
     else:
         st.info("아직 비교 가능한 영상이 없습니다.")
 
-elif page == "📊 채널 분석":
+if page == "📊 채널 분석":
     st.header("📊 채널 분석")
     st.info("🚧 이 화면은 V6.6에서 채워집니다.")
     st.write("여기에는 최근 10/20/50개 영상 성과, 업로드 요일·시간, 소재별 성과 분석이 들어갈 예정입니다.")
     st.caption("지금은 자리만 먼저 만들어 두어 앞으로 기능이 늘어나도 화면이 다시 길어지지 않게 했습니다.")
 
-elif page == "🔎 영상":
+if page in ("🧾 전체 보기", "🔎 영상"):
     # =========================================================
     # 21. 전체 영상 분석
     # =========================================================
