@@ -1609,6 +1609,17 @@ if day_summary:
         f"+{day_summary['likes']:,}개"
     )
 
+    if is_recent_detail and (
+        day_summary.get("views", 0) == 0
+        and day_summary.get("watch_minutes", 0) == 0
+        and day_summary.get("likes", 0) == 0
+        and day_summary.get("net_subscribers", 0) == 0
+    ):
+        st.info(
+            "📌 이 날짜의 Analytics 값은 아직 미집계일 가능성이 있습니다. "
+            "0을 확정 성과로 해석하지 마세요."
+        )
+
 
     # =====================================================
     # 그날 영상별 성과
@@ -1927,7 +1938,8 @@ st.divider()
 # 20. 자동 성과 리포트 V6
 # =========================================================
 
-st.header("🧠 자동 성과 리포트 V6")
+st.header("🧠 자동 성과 리포트 V6.1")
+st.caption(f"🕒 데이터 조회 시각: {datetime.now(KST).strftime('%Y-%m-%d %H:%M KST')} · 최근 날짜의 Analytics는 지연될 수 있습니다.")
 st.caption(
     "원인을 추측하지 않고 실제 데이터와 내 채널 기준선만 비교합니다. "
     "조회수 100회 이상 + 영상별 Analytics가 집계된 공개 영상만 분석합니다."
@@ -1941,6 +1953,139 @@ st.caption(
     f"분석 대상: 공개 영상 {len(public_videos)}개 중 {len(report_videos)}개 · "
     f"마지막 조회: {datetime.now(KST).strftime('%Y-%m-%d %H:%M KST')}"
 )
+
+# -----------------------------
+# 채널 추세
+# -----------------------------
+st.markdown("### 📈 채널 추세")
+
+trend_option = st.selectbox(
+    "추세 분석 기간",
+    ["최근 7일", "최근 14일", "최근 28일", "직접 선택"],
+    key="trend_period_option_v61",
+)
+
+trend_last_day = today - timedelta(days=1)
+
+if trend_option == "최근 7일":
+    trend_end = trend_last_day
+    trend_start = trend_end - timedelta(days=6)
+elif trend_option == "최근 14일":
+    trend_end = trend_last_day
+    trend_start = trend_end - timedelta(days=13)
+elif trend_option == "최근 28일":
+    trend_end = trend_last_day
+    trend_start = trend_end - timedelta(days=27)
+else:
+    tc1, tc2 = st.columns(2)
+    with tc1:
+        trend_start = st.date_input(
+            "추세 시작일",
+            value=trend_last_day - timedelta(days=6),
+            max_value=trend_last_day,
+            key="trend_start_v61",
+        )
+    with tc2:
+        trend_end = st.date_input(
+            "추세 종료일",
+            value=trend_last_day,
+            max_value=trend_last_day,
+            key="trend_end_v61",
+        )
+
+if trend_start > trend_end:
+    st.warning("시작일이 종료일보다 늦어 종료일 기준으로 맞췄습니다.")
+    trend_start = trend_end
+
+trend_days = (trend_end - trend_start).days + 1
+trend_prev_end = trend_start - timedelta(days=1)
+trend_prev_start = trend_prev_end - timedelta(days=trend_days - 1)
+
+def _count_uploads(start_d, end_d):
+    count = 0
+    for _v in public_videos:
+        _raw = _v.get("published_raw")
+        if not _raw:
+            continue
+        try:
+            _dt = datetime.fromisoformat(_raw.replace("Z", "+00:00")).astimezone(KST)
+            if start_d <= _dt.date() <= end_d:
+                count += 1
+        except Exception:
+            pass
+    return count
+
+def _trend_change(cur, prev):
+    if prev == 0:
+        return "계산 불가" if cur != 0 else "0%"
+    return f"{((cur-prev)/abs(prev))*100:+.1f}%"
+
+try:
+    trend_now = get_period_summary(yt_analytics, trend_start, trend_end)
+    trend_prev = get_period_summary(yt_analytics, trend_prev_start, trend_prev_end)
+    trend_daily_rows = get_daily_channel_data(yt_analytics, trend_start, trend_end)
+except Exception as exc:
+    trend_now = None
+    trend_prev = None
+    trend_daily_rows = []
+    st.warning("채널 추세 데이터를 일부 불러오지 못했습니다.")
+    with st.expander("오류 내용"):
+        st.code(str(exc))
+
+if trend_now and trend_prev:
+    now_uploads = _count_uploads(trend_start, trend_end)
+    prev_uploads = _count_uploads(trend_prev_start, trend_prev_end)
+
+    st.caption(
+        f"현재 {trend_start} ~ {trend_end} ↔ 이전 {trend_prev_start} ~ {trend_prev_end} · 오늘 제외"
+    )
+
+    trend_table = pd.DataFrame([
+        ["조회수", f"{trend_now['views']:,}회", f"{trend_prev['views']:,}회",
+         _trend_change(trend_now["views"], trend_prev["views"])],
+        ["시청시간", f"{trend_now['watch_minutes']/60:,.1f}시간",
+         f"{trend_prev['watch_minutes']/60:,.1f}시간",
+         _trend_change(trend_now["watch_minutes"], trend_prev["watch_minutes"])],
+        ["순구독자", f"{trend_now['net_subscribers']:+,}명",
+         f"{trend_prev['net_subscribers']:+,}명",
+         f"{trend_now['net_subscribers']-trend_prev['net_subscribers']:+,}명"],
+        ["업로드", f"{now_uploads:,}개", f"{prev_uploads:,}개",
+         f"{now_uploads-prev_uploads:+,}개"],
+    ], columns=["지표", "현재 기간", "이전 기간", "변화"])
+
+    st.dataframe(trend_table, hide_index=True, use_container_width=True)
+
+    if prev_uploads == 0:
+        st.warning(
+            "⚠️ 이전 기간 업로드가 0개입니다. 조회수 증가율이 커 보여도 "
+            "콘텐츠 자체의 성과가 같은 비율로 개선됐다고 볼 수는 없습니다."
+        )
+    elif trend_prev["views"] == 0:
+        st.warning(
+            "⚠️ 이전 기간 조회수가 0회라 변화율 비교가 의미 없습니다."
+        )
+
+    if now_uploads > 0 and prev_uploads > 0:
+        now_per_upload = trend_now["views"] / now_uploads
+        prev_per_upload = trend_prev["views"] / prev_uploads
+        tc1, tc2 = st.columns(2)
+        tc1.metric("조회수 ÷ 업로드 수 (참고)", f"{now_per_upload:,.0f}회")
+        tc2.metric("이전 기간", f"{prev_per_upload:,.0f}회")
+        st.caption(
+            "※ 이 값에는 기존 영상 조회수도 포함됩니다. 신규 영상 1편의 실제 평균 조회수는 아닙니다."
+        )
+    else:
+        st.caption("※ 두 기간 모두 업로드가 있을 때만 '조회수 ÷ 업로드 수'를 표시합니다.")
+
+    if trend_daily_rows:
+        trend_df = pd.DataFrame(trend_daily_rows)
+        if not trend_df.empty and "date" in trend_df.columns and "views" in trend_df.columns:
+            trend_df["date"] = pd.to_datetime(trend_df["date"])
+            trend_df = trend_df.set_index("date")
+            st.markdown("#### 일별 조회수 흐름")
+            st.line_chart(trend_df[["views"]], use_container_width=True, height=240)
+
+st.divider()
 
 if report_videos:
     base_views = sum(v["views"] for v in report_videos) / len(report_videos)
@@ -1965,11 +2110,53 @@ if report_videos:
 
     def pct_diff(value, base):
         return "비교 불가" if base == 0 else f"{((value-base)/abs(base))*100:+.1f}%"
+
     def pp_diff(value, base, digits):
-        return f"{value-base:+.{digits}f}%p"
+        diff = value - base
+        threshold = {
+            1: 1.0,      # 시청률: ±1.0%p 이내는 비슷
+            2: 0.05,     # 좋아요율: ±0.05%p 이내는 비슷
+            3: 0.005,    # 구독전환율: ±0.005%p 이내는 비슷
+        }.get(digits, 0)
+        if abs(diff) <= threshold:
+            return "≈ 비슷"
+        return f"{diff:+.{digits}f}%p"
+
+    def compare_level(value, base, metric_name):
+        if metric_name == "조회수":
+            if base == 0:
+                return "similar"
+            diff_ratio = abs(value - base) / abs(base)
+            if diff_ratio <= 0.05:
+                return "similar"
+        elif metric_name == "시청률":
+            if abs(value - base) <= 1.0:
+                return "similar"
+        elif metric_name == "좋아요율":
+            if abs(value - base) <= 0.05:
+                return "similar"
+        elif metric_name == "구독전환율":
+            if abs(value - base) <= 0.005:
+                return "similar"
+
+        return "high" if value > base else "low"
 
     for rank,v in enumerate(ordered,start=1):
-        summary=(f"조회수 {v['views']:,} · 시청률 {v['avg_percentage']:.1f}% · "
+        published_text = "업로드일 확인 불가"
+        age_text = ""
+        raw = v.get("published_raw")
+        if raw:
+            try:
+                published_dt = datetime.fromisoformat(raw.replace("Z", "+00:00")).astimezone(KST)
+                published_date = published_dt.date()
+                age_days = max((today - published_date).days, 0)
+                published_text = published_date.strftime("%Y.%m.%d")
+                age_text = f" · 업로드 {age_days}일차"
+            except Exception:
+                pass
+
+        summary=(f"📅 {published_text}{age_text} | "
+                 f"조회수 {v['views']:,} · 시청률 {v['avg_percentage']:.1f}% · "
                  f"좋아요 {v['like_rate']:.2f}% · 구독 {v['sub_conversion_rate']:.3f}%")
         with st.expander(f"{rank}. {v['title']}  |  {summary}"):
             rows=[
@@ -1981,16 +2168,22 @@ if report_videos:
             st.dataframe(pd.DataFrame(rows,columns=["지표","이 영상","채널 기준선","차이"]),
                          hide_index=True,use_container_width=True)
 
-            high=[]; low=[]
+            high=[]; low=[]; similar=[]
             for name,val,base in [
                 ("조회수",v["views"],base_views),("시청률",v["avg_percentage"],base_ret),
                 ("좋아요율",v["like_rate"],base_like),("구독전환율",v["sub_conversion_rate"],base_sub)]:
-                if val>base: high.append(name)
-                elif val<base: low.append(name)
+                level = compare_level(val, base, name)
+                if level == "high":
+                    high.append(name)
+                elif level == "low":
+                    low.append(name)
+                else:
+                    similar.append(name)
 
             st.markdown("**데이터에서 확인되는 점**")
             parts=[]
             if high: parts.append("기준선보다 높음: "+", ".join(high))
+            if similar: parts.append("비슷한 수준: "+", ".join(similar))
             if low: parts.append("기준선보다 낮음: "+", ".join(low))
             st.write(" · ".join(parts) if parts else "채널 기준선과 비슷한 수준입니다.")
 
