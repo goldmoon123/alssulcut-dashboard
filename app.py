@@ -83,6 +83,16 @@ st.set_page_config(
     layout="wide",
 )
 
+st.markdown("""
+<style>
+@media (max-width: 700px) {
+    div[data-testid="stHorizontalBlock"] > div {
+        min-width: 0;
+    }
+}
+</style>
+""", unsafe_allow_html=True)
+
 # =========================================================
 # 모바일 화면 최적화
 # =========================================================
@@ -751,6 +761,46 @@ st.success(
     "✅ YouTube 채널 연결 완료!"
 )
 
+
+# =========================================================
+# UI 안내 — 처음 보는 사람도 순서를 알 수 있게
+# =========================================================
+st.markdown("### 🧭 Shorts Scope 보는 순서")
+
+_nav_cols = st.columns(5)
+_nav_items = [
+    ("①", "채널 요약", "지금 채널의 전체 상태"),
+    ("②", "기간 성과", "최근 조회수와 구독 변화"),
+    ("③", "달력·하루", "언제 조회수가 발생했는지"),
+    ("④", "성과 리포트", "어떤 영상이 잘되고 있는지"),
+    ("⑤", "영상 찾기", "개별 영상 검색·정렬"),
+]
+for _col, (_num, _title, _desc) in zip(_nav_cols, _nav_items):
+    with _col:
+        st.markdown(
+            f"""
+            <div style="
+                border:1px solid rgba(128,128,128,.25);
+                border-radius:12px;
+                padding:12px 10px;
+                min-height:92px;
+                text-align:center;
+            ">
+                <div style="font-size:18px;font-weight:700;">{_num} {_title}</div>
+                <div style="font-size:12px;opacity:.72;margin-top:5px;">{_desc}</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+with st.expander("ℹ️ 처음이라면 이렇게 보세요"):
+    st.write(
+        "평소에는 ① 채널 요약 → ② 기간 성과까지만 확인하고, "
+        "특이한 변화가 있을 때 ③ 달력·하루 또는 ④ 성과 리포트를 보면 됩니다. "
+        "특정 영상을 찾고 싶을 때만 ⑤ 영상 찾기를 사용하세요."
+    )
+
+st.divider()
 st.subheader(
     f"📺 {channel_info['channel_name']}"
 )
@@ -1927,7 +1977,7 @@ if public_videos:
     )
 
     c4.metric(
-        "공개 영상 순구독자 합계",
+        "공개 영상에서 발생한 순구독자",
         f"{total_net_subscribers:+,}명"
     )
 
@@ -1939,7 +1989,7 @@ st.divider()
 # 20. 자동 성과 리포트 V6
 # =========================================================
 
-st.header("🧠 자동 성과 리포트 V6.3")
+st.header("④ 🧠 자동 성과 리포트 V6.4")
 st.caption(f"🕒 데이터 조회 시각: {datetime.now(KST).strftime('%Y-%m-%d %H:%M KST')} · 최근 날짜의 Analytics는 지연될 수 있습니다.")
 st.caption(
     "원인을 추측하지 않고 실제 데이터와 내 채널 기준선만 비교합니다. "
