@@ -763,935 +763,478 @@ st.success(
 
 
 # =========================================================
-# UI 안내 — 처음 보는 사람도 순서를 알 수 있게
+# V6.4 2차 — 실제 화면 전환 메뉴
 # =========================================================
-st.markdown("### 🧭 Shorts Scope 보는 순서")
+st.markdown("### 🧭 메뉴")
 
-_nav_cols = st.columns(5)
-_nav_items = [
-    ("①", "채널 요약", "지금 채널의 전체 상태"),
-    ("②", "기간 성과", "최근 조회수와 구독 변화"),
-    ("③", "달력·하루", "언제 조회수가 발생했는지"),
-    ("④", "성과 리포트", "어떤 영상이 잘되고 있는지"),
-    ("⑤", "영상 찾기", "개별 영상 검색·정렬"),
-]
-for _col, (_num, _title, _desc) in zip(_nav_cols, _nav_items):
-    with _col:
-        st.markdown(
-            f"""
-            <div style="
-                border:1px solid rgba(128,128,128,.25);
-                border-radius:12px;
-                padding:12px 10px;
-                min-height:92px;
-                text-align:center;
-            ">
-                <div style="font-size:18px;font-weight:700;">{_num} {_title}</div>
-                <div style="font-size:12px;opacity:.72;margin-top:5px;">{_desc}</div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-with st.expander("ℹ️ 처음이라면 이렇게 보세요"):
-    st.write(
-        "평소에는 ① 채널 요약 → ② 기간 성과까지만 확인하고, "
-        "특이한 변화가 있을 때 ③ 달력·하루 또는 ④ 성과 리포트를 보면 됩니다. "
-        "특정 영상을 찾고 싶을 때만 ⑤ 영상 찾기를 사용하세요."
-    )
-
-st.divider()
-st.subheader(
-    f"📺 {channel_info['channel_name']}"
-)
-
-
-c1, c2, c3 = st.columns(3)
-
-c1.metric(
-    "구독자",
-    f"{channel_info['subscribers']:,}명"
-)
-
-c2.metric(
-    "총 조회수",
-    f"{channel_info['total_views']:,}회"
-)
-
-c3.metric(
-    "공개 영상",
-    f"{channel_info['public_video_count']:,}개"
-)
-
-st.divider()
-
-
-# =========================================================
-# 11. 영상 현황
-# =========================================================
-
-st.subheader(
-    "🎬 영상 현황"
-)
-
-c1, c2, c3 = st.columns(3)
-
-c1.metric(
-    "전체",
-    f"{len(videos)}개"
-)
-
-c2.metric(
-    "🟢 공개",
-    f"{len(public_videos)}개"
-)
-
-c3.metric(
-    "🟡 예약",
-    f"{len(scheduled_videos)}개"
-)
-
-st.markdown(
-    f"""
-    <div class="status-two-grid">
-        <div class="status-card">
-            <div class="status-label">🔒 비공개</div>
-            <div class="status-value">{len(private_videos)}개</div>
-        </div>
-        <div class="status-card">
-            <div class="status-label">🔵 일부공개</div>
-            <div class="status-value">{len(unlisted_videos)}개</div>
-        </div>
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
-
-st.caption(
-    "※ 예약·비공개·일부공개 영상은 "
-    "성과 평균과 순위에서 제외됩니다."
-)
-
-st.divider()
-
-
-# =========================================================
-# 12. 날짜 / 기간 분석
-# =========================================================
-
-st.header(
-    "📅 날짜 / 기간 분석"
-)
-
-st.write(
-    "기간을 선택하면 해당 기간 동안 "
-    "채널이 얼마나 성장했는지 확인할 수 있습니다."
-)
-
-
-# ---------------------------------------------------------
-# 기간 선택 + 분석하기 버튼
-# ---------------------------------------------------------
-
-today = datetime.now(KST).date()
-
-# 처음 들어왔을 때는 최근 7일을 기본 적용
-if "applied_period_option" not in st.session_state:
-    st.session_state.applied_period_option = "최근 7일"
-    st.session_state.applied_start_date = today - timedelta(days=7)
-    st.session_state.applied_end_date = today - timedelta(days=1)
-
-period_option = st.radio(
-    "분석 기간",
-    ["오늘", "최근 7일", "최근 28일", "직접 선택"],
+page = st.radio(
+    "화면 선택",
+    ["🏠 홈", "📅 기간·달력", "📈 성장 분석", "📊 채널 분석", "🔎 영상"],
     horizontal=True,
-    index=1,
-    key="period_option_input",
+    label_visibility="collapsed",
+    key="main_page_v64",
 )
 
-selected_range = None
-if period_option == "직접 선택":
-    selected_range = st.date_input(
-        "날짜 범위 선택",
-        value=(today - timedelta(days=6), today),
-        key="period_custom_range",
-    )
-
-if period_option == "오늘":
-    candidate_start = today
-    candidate_end = today
-elif period_option == "최근 7일":
-    candidate_end = today - timedelta(days=1)
-    candidate_start = candidate_end - timedelta(days=6)
-elif period_option == "최근 28일":
-    candidate_end = today - timedelta(days=1)
-    candidate_start = candidate_end - timedelta(days=27)
-else:
-    if isinstance(selected_range, tuple) and len(selected_range) == 2:
-        candidate_start, candidate_end = selected_range
-    elif selected_range:
-        candidate_start = selected_range
-        candidate_end = selected_range
-    else:
-        candidate_start = today
-        candidate_end = today
-
-if st.button(
-    "🔍 분석하기",
-    type="primary",
-    use_container_width=True,
-    key="apply_period_button",
-):
-    st.session_state.applied_period_option = period_option
-    st.session_state.applied_start_date = candidate_start
-    st.session_state.applied_end_date = candidate_end
-
-period_option = st.session_state.applied_period_option
-start_date = st.session_state.applied_start_date
-end_date = st.session_state.applied_end_date
-
-st.caption(
-    f"적용된 분석 기간: {start_date} ~ {end_date}"
-)
-
-if period_option == "오늘":
-    st.info(
-        "⏳ 오늘 데이터는 YouTube Analytics에서 아직 집계 중일 수 있습니다. "
-        "오늘 수치가 0으로 보여도 실제 조회가 없는 뜻은 아닐 수 있으며, "
-        "확정 데이터는 시간이 지나면서 반영됩니다."
-    )
-
-
-# =========================================================
-# 13. 현재 기간 / 이전 기간
-# =========================================================
-
-try:
-
-    current_summary = (
-        get_period_summary(
-            yt_analytics,
-            start_date,
-            end_date,
-        )
-    )
-
-    (
-        previous_start,
-        previous_end,
-    ) = get_previous_period(
-        start_date,
-        end_date,
-    )
-
-    previous_summary = (
-        get_period_summary(
-            yt_analytics,
-            previous_start,
-            previous_end,
-        )
-    )
-
-except Exception as e:
-
-    st.error(
-        "기간별 Analytics 데이터를 "
-        "가져오지 못했습니다."
-    )
-
-    st.code(
-        str(e)
-    )
-
-    st.stop()
-
-
-# =========================================================
-# 14. 변화율 함수
-# =========================================================
-
-def change_text(
-    current,
-    previous,
-):
-
-    change = calculate_change(
-        current,
-        previous
-    )
-
-    if change is None:
-        return f"이전 기간 {previous:,.0f}"
-
-    return f"{change:+.1f}%"
-
-
-# =========================================================
-# 15. 기간 성과 카드
-# =========================================================
-
-st.subheader(
-    "📊 선택 기간 성과"
-)
-
-c1, c2, c3, c4 = (
-    st.columns(4)
-)
-
-
-c1.metric(
-    "조회수",
-    f"{current_summary['views']:,}회",
-    change_text(
-        current_summary["views"],
-        previous_summary["views"],
-    ),
-)
-
-
-c2.metric(
-    "순구독자",
-    (
-        f"{current_summary['net_subscribers']:+,}명"
-    ),
-    change_text(
-        current_summary[
-            "net_subscribers"
-        ],
-        previous_summary[
-            "net_subscribers"
-        ],
-    ),
-)
-
-
-c3.metric(
-    "시청시간",
-    format_watch_time(
-        current_summary[
-            "watch_minutes"
-        ]
-    ),
-    change_text(
-        current_summary[
-            "watch_minutes"
-        ],
-        previous_summary[
-            "watch_minutes"
-        ],
-    ),
-)
-
-
-c4.metric(
-    "좋아요",
-    f"{current_summary['likes']:,}개",
-    change_text(
-        current_summary["likes"],
-        previous_summary["likes"],
-    ),
-)
-
-
-c1, c2, c3, c4 = (
-    st.columns(4)
-)
-
-
-c1.metric(
-    "구독자 획득",
-    (
-        f"+{current_summary['subscribers_gained']:,}명"
-    )
-)
-
-
-c2.metric(
-    "구독자 이탈",
-    (
-        f"-{current_summary['subscribers_lost']:,}명"
-    )
-)
-
-
-c3.metric(
-    "댓글",
-    f"{current_summary['comments']:,}개"
-)
-
-
-c4.metric(
-    "공유",
-    f"{current_summary['shares']:,}회"
-)
-
-
-st.caption(
-    f"비교 기간: "
-    f"{previous_start} ~ {previous_end}"
-)
-
+_page_help = {
+    "🏠 홈": "채널 전체 상태와 공개 영상 누적 성과",
+    "📅 기간·달력": "기간 성과 · 일별 차트 · 월간 달력 · 하루 상세",
+    "📈 성장 분석": "채널 기준선 · 영상별 D+N 성장 비교",
+    "📊 채널 분석": "최근 영상 묶음 · 요일/시간 · 소재 분석이 들어갈 자리",
+    "🔎 영상": "검색 · 전체 데이터 · TOP 순위 · Excel · 예약 영상",
+}
+st.caption(_page_help[page])
 st.divider()
 
 
-# =========================================================
-# 16. 일별 데이터
-# =========================================================
-
-try:
-
-    daily_data = (
-        get_daily_channel_data(
-            yt_analytics,
-            start_date,
-            end_date,
-        )
-    )
-
-except Exception as e:
-
-    daily_data = []
-
-    st.warning(
-        "일별 데이터를 불러오지 못했습니다."
-    )
-
-    st.code(
-        str(e)
-    )
-
-
-if daily_data:
-
-    daily_df = pd.DataFrame(daily_data)
-    daily_df["date"] = pd.to_datetime(daily_df["date"])
-
-    # 데이터가 없는 날짜도 0으로 채움
-    full_dates = pd.date_range(start=start_date, end=end_date, freq="D")
-    daily_df = daily_df.set_index("date").reindex(full_dates).fillna(0)
-    daily_df.index.name = "날짜"
-    daily_df.index = [dt.strftime("%m/%d") for dt in daily_df.index]
-
-    st.subheader("📈 일별 조회수")
-    st.line_chart(daily_df[["views"]], use_container_width=True, height=260)
-
-    st.subheader("👤 일별 순구독자")
-    st.bar_chart(daily_df[["net_subscribers"]], use_container_width=True, height=260)
-
-else:
-    st.info("선택한 기간에 일별 Analytics 데이터가 없습니다.")
-
-st.divider()
-
-
-def add_excel_table(ws, table_name):
-    """Excel 실제 표(Table) + 필터/정렬."""
-    if ws.max_row < 2 or ws.max_column < 1:
-        return
-    safe_name = re.sub(r"[^A-Za-z0-9_]", "_", table_name)
-    if not safe_name or safe_name[0].isdigit():
-        safe_name = "T_" + safe_name
-    table = Table(displayName=safe_name, ref=ws.dimensions)
-    table.tableStyleInfo = TableStyleInfo(
-        name="TableStyleMedium2",
-        showFirstColumn=False,
-        showLastColumn=False,
-        showRowStripes=True,
-        showColumnStripes=False,
-    )
-    ws.add_table(table)
-
-
-def call_with_retry(func, *args, attempts=2, delay=0.35, **kwargs):
-    """YouTube API의 일시적 5xx 오류를 짧게 재시도합니다."""
-    last_error = None
-    for attempt in range(attempts):
-        try:
-            return func(*args, **kwargs)
-        except Exception as exc:
-            last_error = exc
-            status = getattr(getattr(exc, "resp", None), "status", None)
-            if status is not None and int(status) < 500:
-                raise
-            if attempt < attempts - 1:
-                time.sleep(delay)
-    if last_error:
-        raise last_error
-
-
-# =========================================================
-# 17. 월간 성과 달력
-# =========================================================
-
-st.header("🗓️ 월간 성과 달력")
-
-# 달력은 항상 현재 날짜가 속한 달부터 시작
-if "calendar_month" not in st.session_state:
-    st.session_state.calendar_month = today.replace(day=1)
-
-if "calendar_selected_day" not in st.session_state:
-    st.session_state.calendar_selected_day = today
-
-calendar_month = st.session_state.calendar_month
-left, center, right = st.columns([1, 3, 1])
-
-with left:
-    if st.button("◀ 이전 달", use_container_width=True):
-        st.session_state.calendar_month = (calendar_month - timedelta(days=1)).replace(day=1)
-        st.rerun()
-
-with center:
-    st.markdown(
-        f"<h3 style='text-align:center;'>{calendar_month.year}년 {calendar_month.month}월</h3>",
-        unsafe_allow_html=True,
-    )
-
-with right:
-    next_month = (calendar_month.replace(day=28) + timedelta(days=4)).replace(day=1)
-    if st.button(
-        "다음 달 ▶",
-        use_container_width=True,
-        disabled=next_month > today.replace(day=1),
-    ):
-        st.session_state.calendar_month = next_month
-        st.rerun()
-
-month_start = calendar_month
-last_day = calendar.monthrange(calendar_month.year, calendar_month.month)[1]
-month_end = min(date(calendar_month.year, calendar_month.month, last_day), today)
-
-try:
-    month_daily_data = get_daily_channel_data(yt_analytics, month_start, month_end)
-except Exception:
-    month_daily_data = []
-
-month_lookup = {item["date"]: item for item in month_daily_data}
-
-
-def make_monthly_excel(month_daily_rows, month_value, all_public_videos):
-    """
-    달력에서 선택한 달을 실제 분석용 엑셀로 내보냅니다.
-
-    1시트: 월간 일별 성과
-    2시트: 그달 업로드 영상
-    3시트: 월간 요약
-    """
-    output = BytesIO()
-
-    # -----------------------------
-    # 그달 업로드 영상 정리
-    # -----------------------------
-    uploaded_rows = []
-    upload_by_date = {}
-
-    for video in all_public_videos:
-        published_raw = video.get("published_raw")
-        if not published_raw:
-            continue
-
-        try:
-            published_dt = datetime.fromisoformat(
-                published_raw.replace("Z", "+00:00")
-            ).astimezone(KST)
-        except Exception:
-            continue
-
-        if (
-            published_dt.year == month_value.year
-            and published_dt.month == month_value.month
-        ):
-            date_key = published_dt.strftime("%Y-%m-%d")
-            upload_by_date.setdefault(date_key, []).append(video.get("title", ""))
-
-            uploaded_rows.append({
-                "업로드일(KST)": published_dt.strftime("%Y-%m-%d %H:%M"),
-                "제목": video.get("title", ""),
-                "조회수": int(video.get("views", 0)),
-                "좋아요": int(video.get("likes", 0)),
-                "댓글": int(video.get("comments", 0)),
-                "공유": int(video.get("shares", 0)),
-                "평균 시청시간(초)": round(float(video.get("avg_duration", 0)), 1),
-                "평균 시청률(%)": round(float(video.get("avg_percentage", 0)), 1),
-                "순구독자": int(video.get("net_subs", 0)),
-                "좋아요율(%)": round(float(video.get("like_rate", 0)), 2),
-                "구독전환율(%)": round(float(video.get("sub_conversion_rate", 0)), 3),
-                "성과점수": (
-                    video.get("performance_score")
-                    if video.get("performance_score") is not None
-                    else "평가 보류"
-                ),
-                "성과등급": video.get("performance_grade", "-"),
-            })
-
-    month_upload_df = pd.DataFrame(uploaded_rows)
-
-    # -----------------------------
-    # 날짜별 Analytics 정리
-    # 데이터가 없는 날짜도 0으로 포함
-    # -----------------------------
-    daily_lookup = {
-        str(item.get("date", "")): item
-        for item in month_daily_rows
-    }
-
-    last_day = calendar.monthrange(month_value.year, month_value.month)[1]
-    calendar_last_date = date(month_value.year, month_value.month, last_day)
-
-    if month_value.year == today.year and month_value.month == today.month:
-        export_last_date = today
-    else:
-        export_last_date = calendar_last_date
-
-    weekday_ko = ["월", "화", "수", "목", "금", "토", "일"]
-    daily_export = []
-
-    current_date = date(month_value.year, month_value.month, 1)
-
-    while current_date <= export_last_date:
-        date_key = current_date.strftime("%Y-%m-%d")
-        item = daily_lookup.get(date_key, {})
-
-        watch_minutes = float(item.get("watch_minutes", 0) or 0)
-        uploaded_titles = upload_by_date.get(date_key, [])
-
-        daily_export.append({
-            "날짜": date_key,
-            "요일": weekday_ko[current_date.weekday()],
-            "조회수": int(item.get("views", 0) or 0),
-            "시청시간(시간)": round(watch_minutes / 60, 2),
-            "좋아요": int(item.get("likes", 0) or 0),
-            "댓글": int(item.get("comments", 0) or 0),
-            "공유": int(item.get("shares", 0) or 0),
-            "구독자 획득": int(item.get("subscribers_gained", 0) or 0),
-            "구독자 이탈": int(item.get("subscribers_lost", 0) or 0),
-            "순구독자": int(item.get("net_subscribers", 0) or 0),
-            "업로드 영상 수": len(uploaded_titles),
-            "업로드 영상": " / ".join(uploaded_titles),
-        })
-
-        current_date += timedelta(days=1)
-
-    month_daily_df = pd.DataFrame(daily_export)
-
-    # 맨 아래 합계 행
-    if not month_daily_df.empty:
-        total_row = {
-            "날짜": "합계",
-            "요일": "",
-            "조회수": int(month_daily_df["조회수"].sum()),
-            "시청시간(시간)": round(float(month_daily_df["시청시간(시간)"].sum()), 2),
-            "좋아요": int(month_daily_df["좋아요"].sum()),
-            "댓글": int(month_daily_df["댓글"].sum()),
-            "공유": int(month_daily_df["공유"].sum()),
-            "구독자 획득": int(month_daily_df["구독자 획득"].sum()),
-            "구독자 이탈": int(month_daily_df["구독자 이탈"].sum()),
-            "순구독자": int(month_daily_df["순구독자"].sum()),
-            "업로드 영상 수": int(month_daily_df["업로드 영상 수"].sum()),
-            "업로드 영상": "",
-        }
-        month_daily_df = pd.concat(
-            [month_daily_df, pd.DataFrame([total_row])],
-            ignore_index=True,
-        )
-
-    # -----------------------------
-    # 월간 요약
-    # -----------------------------
-    data_only_df = month_daily_df[month_daily_df["날짜"] != "합계"].copy()
-
-    summary_df = pd.DataFrame([
-        ["채널명", channel_info.get("channel_name", channel_info.get("title", ""))],
-        ["대상 월", f"{month_value.year}-{month_value.month:02d}"],
-        ["월 조회수", int(data_only_df["조회수"].sum()) if not data_only_df.empty else 0],
-        ["월 순구독자", int(data_only_df["순구독자"].sum()) if not data_only_df.empty else 0],
-        ["월 시청시간(시간)", round(float(data_only_df["시청시간(시간)"].sum()), 2) if not data_only_df.empty else 0],
-        ["월 좋아요", int(data_only_df["좋아요"].sum()) if not data_only_df.empty else 0],
-        ["월 댓글", int(data_only_df["댓글"].sum()) if not data_only_df.empty else 0],
-        ["월 공유", int(data_only_df["공유"].sum()) if not data_only_df.empty else 0],
-        ["그달 업로드 영상", len(month_upload_df)],
-        ["생성 시각", datetime.now(KST).strftime("%Y-%m-%d %H:%M:%S KST")],
-    ], columns=["항목", "값"])
-
-    # -----------------------------
-    # Excel 출력
-    # -----------------------------
-    with pd.ExcelWriter(output, engine="openpyxl") as writer:
-        # 열자마자 상세 데이터가 먼저 보이게 함
-        month_daily_df.to_excel(writer, sheet_name="월간 일별 성과", index=False)
-        month_upload_df.to_excel(writer, sheet_name="그달 업로드 영상", index=False)
-        summary_df.to_excel(writer, sheet_name="월간 요약", index=False)
-
-        for sheet_name in writer.book.sheetnames:
-            ws = writer.book[sheet_name]
-            ws.freeze_panes = "A2"
-            ws.auto_filter.ref = ws.dimensions
-
-            header_map = {
-                cell.value: cell.column_letter
-                for cell in ws[1]
-                if cell.value is not None
-            }
-
-            for column_cells in ws.columns:
-                max_length = 0
-                column_letter = column_cells[0].column_letter
-
-                for cell in column_cells:
-                    try:
-                        cell_length = len(str(cell.value)) if cell.value is not None else 0
-                        max_length = max(max_length, cell_length)
-                    except Exception:
-                        pass
-
-                ws.column_dimensions[column_letter].width = min(
-                    max(max_length + 3, 11),
-                    48,
-                )
-
-            # 날짜는 무조건 문자열로
-            for header in ["날짜", "업로드일(KST)"]:
-                if header in header_map:
-                    col = header_map[header]
-                    for row in range(2, ws.max_row + 1):
-                        ws[f"{col}{row}"].number_format = "@"
-
-            if "날짜" in header_map:
-                ws.column_dimensions[header_map["날짜"]].width = 14
-
-            if "업로드일(KST)" in header_map:
-                ws.column_dimensions[header_map["업로드일(KST)"]].width = 21
-
-            if "제목" in header_map:
-                ws.column_dimensions[header_map["제목"]].width = 42
-
-            if "업로드 영상" in header_map:
-                ws.column_dimensions[header_map["업로드 영상"]].width = 48
-
-        for idx, sheet_name in enumerate(writer.book.sheetnames, start=1):
-            add_excel_table(writer.book[sheet_name], f"MonthlyTable_{idx}")
-
-    output.seek(0)
-    return output.getvalue()
-
-
-# 공개 영상을 올린 날짜(KST)
-upload_dates = set()
-for video in public_videos:
-    published_raw = video.get("published_raw")
-    if not published_raw:
-        continue
-    try:
-        published_dt = datetime.fromisoformat(
-            published_raw.replace("Z", "+00:00")
-        ).astimezone(KST)
-        upload_dates.add(published_dt.date())
-    except Exception:
-        pass
-
-weekday_names = ["월", "화", "수", "목", "금", "토", "일"]
-for column, name in zip(st.columns(7), weekday_names):
-    column.markdown(f"<div style='text-align:center;'><b>{name}</b></div>", unsafe_allow_html=True)
-
-for week in calendar.monthcalendar(calendar_month.year, calendar_month.month):
-    columns = st.columns(7)
-    for day_index, day_number in enumerate(week):
-        if day_number == 0:
-            columns[day_index].write("")
-            continue
-
-        current_day = date(calendar_month.year, calendar_month.month, day_number)
-        day_key = current_day.strftime("%Y-%m-%d")
-        has_analytics_row = day_key in month_lookup
-        day_data = month_lookup.get(day_key, {})
-        views = int(day_data.get("views", 0))
-        net_subscribers = int(day_data.get("net_subscribers", 0))
-
-        if current_day > today:
-            columns[day_index].button(
-                f"{day_number}일\n\n-",
-                key=f"future_{current_day}",
-                disabled=True,
-                use_container_width=True,
-            )
-            continue
-
-        if views >= 10000:
-            view_text = f"{views / 10000:.1f}만"
-        elif views >= 1000:
-            view_text = f"{views / 1000:.1f}천"
-        else:
-            view_text = f"{views:,}"
-
-        subscriber_text = f"\n👤 {net_subscribers:+d}" if net_subscribers != 0 else ""
-        upload_mark = " 🎬" if current_day in upload_dates else ""
-
-        # 최근 2일은 Analytics 행 자체가 없으면 0으로 단정하지 않음
-        is_recent_calendar_day = 0 <= (today - current_day).days <= 2
-        if is_recent_calendar_day and not has_analytics_row:
-            label = f"{day_number}일{upload_mark}\n\n⏳ 집계 중"
-        elif views == 0 and net_subscribers == 0:
-            label = f"{day_number}일{upload_mark}"
-        else:
-            label = f"{day_number}일{upload_mark}\n\n👁 {view_text}{subscriber_text}"
-
-        if columns[day_index].button(
-            label,
-            key=f"calendar_{current_day}",
-            use_container_width=True,
-        ):
-            st.session_state.calendar_selected_day = current_day
-            st.rerun()
-
-st.caption("날짜를 누르면 아래에서 그날의 상세 성과를 확인할 수 있습니다.")
-
-st.download_button(
-    f"📥 {calendar_month.year}년 {calendar_month.month}월 성과 엑셀",
-    data=make_monthly_excel(month_daily_data, calendar_month, public_videos),
-    file_name=f"shorts_monthly_{calendar_month.year}_{calendar_month.month:02d}.xlsx",
-    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    use_container_width=True,
-    key=f"monthly_excel_{calendar_month.year}_{calendar_month.month}",
-)
-
-st.divider()
-
-# =========================================================
-# 18. 특정 날짜 선택
-# =========================================================
-
-st.header(
-    "🔎 하루 자세히 보기"
-)
-
-if "applied_detail_day" not in st.session_state:
-    st.session_state.applied_detail_day = st.session_state.get(
-        "calendar_selected_day",
-        end_date,
-    )
-
-detail_day_input = st.date_input(
-    "확인할 날짜",
-    value=st.session_state.get("calendar_selected_day", end_date),
-    min_value=date(2005, 1, 1),
-    max_value=today,
-    key="detail_day_input",
-)
-st.session_state.calendar_selected_day = detail_day_input
-
-if st.button(
-    "🔍 조회하기",
-    type="primary",
-    use_container_width=True,
-    key="apply_detail_day_button",
-):
-    st.session_state.applied_detail_day = detail_day_input
-
-selected_day = st.session_state.applied_detail_day
-st.caption(f"현재 조회 중인 날짜: {selected_day}")
-
-# 최근 날짜는 YouTube Analytics의 일별 집계가 아직 완료되지 않았을 수 있음
-detail_age_days = (today - selected_day).days
-is_recent_detail = 0 <= detail_age_days <= 2
-if is_recent_detail:
-    st.warning(
-        "⏳ 최근 날짜의 YouTube Analytics 데이터는 아직 집계 중일 수 있습니다. "
-        "아래 일별 수치가 0으로 보여도 실제 0이라고 단정할 수 없습니다. "
-        "영상 아래의 '현재 조회수'는 누적값이고, 여기의 '그날 조회수'는 날짜별 Analytics 값입니다."
-    )
-
-
-try:
-
-    day_summary = (
-        get_period_summary(
-            yt_analytics,
-            selected_day,
-            selected_day,
-        )
-    )
-
-except Exception as e:
-
-    st.error(
-        "선택 날짜 데이터를 "
-        "가져오지 못했습니다."
-    )
-
-    st.code(
-        str(e)
-    )
-
-    day_summary = None
-
-
-if day_summary:
-
+if page == "🏠 홈":
     st.subheader(
-        f"📅 {selected_day}"
+        f"📺 {channel_info['channel_name']}"
     )
 
-    c1, c2, c3, c4 = (
-        st.columns(4)
-    )
+
+    c1, c2, c3 = st.columns(3)
 
     c1.metric(
-        "그날 조회수",
-        f"+{day_summary['views']:,}회"
+        "구독자",
+        f"{channel_info['subscribers']:,}명"
     )
 
     c2.metric(
-        "그날 순구독자",
-        (
-            f"{day_summary['net_subscribers']:+,}명"
-        )
+        "총 조회수",
+        f"{channel_info['total_views']:,}회"
     )
 
     c3.metric(
-        "그날 시청시간",
-        format_watch_time(
-            day_summary[
-                "watch_minutes"
-            ]
+        "공개 영상",
+        f"{channel_info['public_video_count']:,}개"
+    )
+
+    st.divider()
+
+
+    # =========================================================
+    # 11. 영상 현황
+    # =========================================================
+
+    st.subheader(
+        "🎬 영상 현황"
+    )
+
+    c1, c2, c3 = st.columns(3)
+
+    c1.metric(
+        "전체",
+        f"{len(videos)}개"
+    )
+
+    c2.metric(
+        "🟢 공개",
+        f"{len(public_videos)}개"
+    )
+
+    c3.metric(
+        "🟡 예약",
+        f"{len(scheduled_videos)}개"
+    )
+
+    st.markdown(
+        f"""
+        <div class="status-two-grid">
+            <div class="status-card">
+                <div class="status-label">🔒 비공개</div>
+                <div class="status-value">{len(private_videos)}개</div>
+            </div>
+            <div class="status-card">
+                <div class="status-label">🔵 일부공개</div>
+                <div class="status-value">{len(unlisted_videos)}개</div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.caption(
+        "※ 예약·비공개·일부공개 영상은 "
+        "성과 평균과 순위에서 제외됩니다."
+    )
+
+    st.divider()
+
+
+
+    # =========================================================
+    # 19. 공개 영상 전체 성과
+    # =========================================================
+
+    st.header("🎯 전체 공개 영상 분석")
+    st.caption("현재 공개 상태인 영상 전체의 누적 성과입니다.")
+
+
+    if public_videos:
+
+        total_views = sum(
+            video["views"]
+            for video in public_videos
         )
+
+        average_views = (
+            total_views
+            / len(public_videos)
+        )
+
+        best_video = max(
+            public_videos,
+            key=lambda x: x["views"]
+        )
+
+        total_watch_minutes = sum(
+            video["watch_minutes"]
+            for video in public_videos
+        )
+
+        total_net_subscribers = sum(
+            video["net_subs"]
+            for video in public_videos
+        )
+
+
+        c1, c2, c3, c4 = (
+            st.columns(4)
+        )
+
+        c1.metric(
+            "전체 공개 영상 평균 조회수",
+            f"{average_views:,.0f}회"
+        )
+
+        c2.metric(
+            "최고 조회수",
+            f"{best_video['views']:,}회"
+        )
+
+        c3.metric(
+            "총 시청시간",
+            format_watch_time(
+                total_watch_minutes
+            )
+        )
+
+        c4.metric(
+            "공개 영상에서 발생한 순구독자",
+            f"{total_net_subscribers:+,}명"
+        )
+
+
+    st.divider()
+
+elif page == "📅 기간·달력":
+    # =========================================================
+    # 12. 날짜 / 기간 분석
+    # =========================================================
+
+    st.header(
+        "📅 날짜 / 기간 분석"
     )
 
-    c4.metric(
-        "그날 좋아요",
-        f"+{day_summary['likes']:,}개"
+    st.write(
+        "기간을 선택하면 해당 기간 동안 "
+        "채널이 얼마나 성장했는지 확인할 수 있습니다."
     )
 
-    if is_recent_detail and (
-        day_summary.get("views", 0) == 0
-        and day_summary.get("watch_minutes", 0) == 0
-        and day_summary.get("likes", 0) == 0
-        and day_summary.get("net_subscribers", 0) == 0
+
+    # ---------------------------------------------------------
+    # 기간 선택 + 분석하기 버튼
+    # ---------------------------------------------------------
+
+    today = datetime.now(KST).date()
+
+    # 처음 들어왔을 때는 최근 7일을 기본 적용
+    if "applied_period_option" not in st.session_state:
+        st.session_state.applied_period_option = "최근 7일"
+        st.session_state.applied_start_date = today - timedelta(days=7)
+        st.session_state.applied_end_date = today - timedelta(days=1)
+
+    period_option = st.radio(
+        "분석 기간",
+        ["오늘", "최근 7일", "최근 28일", "직접 선택"],
+        horizontal=True,
+        index=1,
+        key="period_option_input",
+    )
+
+    selected_range = None
+    if period_option == "직접 선택":
+        selected_range = st.date_input(
+            "날짜 범위 선택",
+            value=(today - timedelta(days=6), today),
+            key="period_custom_range",
+        )
+
+    if period_option == "오늘":
+        candidate_start = today
+        candidate_end = today
+    elif period_option == "최근 7일":
+        candidate_end = today - timedelta(days=1)
+        candidate_start = candidate_end - timedelta(days=6)
+    elif period_option == "최근 28일":
+        candidate_end = today - timedelta(days=1)
+        candidate_start = candidate_end - timedelta(days=27)
+    else:
+        if isinstance(selected_range, tuple) and len(selected_range) == 2:
+            candidate_start, candidate_end = selected_range
+        elif selected_range:
+            candidate_start = selected_range
+            candidate_end = selected_range
+        else:
+            candidate_start = today
+            candidate_end = today
+
+    if st.button(
+        "🔍 분석하기",
+        type="primary",
+        use_container_width=True,
+        key="apply_period_button",
     ):
+        st.session_state.applied_period_option = period_option
+        st.session_state.applied_start_date = candidate_start
+        st.session_state.applied_end_date = candidate_end
+
+    period_option = st.session_state.applied_period_option
+    start_date = st.session_state.applied_start_date
+    end_date = st.session_state.applied_end_date
+
+    st.caption(
+        f"적용된 분석 기간: {start_date} ~ {end_date}"
+    )
+
+    if period_option == "오늘":
         st.info(
-            "📌 이 날짜의 Analytics 값은 아직 미집계일 가능성이 있습니다. "
-            "0을 확정 성과로 해석하지 마세요."
+            "⏳ 오늘 데이터는 YouTube Analytics에서 아직 집계 중일 수 있습니다. "
+            "오늘 수치가 0으로 보여도 실제 조회가 없는 뜻은 아닐 수 있으며, "
+            "확정 데이터는 시간이 지나면서 반영됩니다."
         )
 
 
-    # =====================================================
-    # 그날 영상별 성과
-    # =====================================================
+    # =========================================================
+    # 13. 현재 기간 / 이전 기간
+    # =========================================================
 
     try:
 
-        day_video_data = (
-            get_video_performance_for_day(
+        current_summary = (
+            get_period_summary(
                 yt_analytics,
-                selected_day,
+                start_date,
+                end_date,
+            )
+        )
+
+        (
+            previous_start,
+            previous_end,
+        ) = get_previous_period(
+            start_date,
+            end_date,
+        )
+
+        previous_summary = (
+            get_period_summary(
+                yt_analytics,
+                previous_start,
+                previous_end,
             )
         )
 
     except Exception as e:
 
-        day_video_data = []
+        st.error(
+            "기간별 Analytics 데이터를 "
+            "가져오지 못했습니다."
+        )
+
+        st.code(
+            str(e)
+        )
+
+        st.stop()
+
+
+    # =========================================================
+    # 14. 변화율 함수
+    # =========================================================
+
+    def change_text(
+        current,
+        previous,
+    ):
+
+        change = calculate_change(
+            current,
+            previous
+        )
+
+        if change is None:
+            return f"이전 기간 {previous:,.0f}"
+
+        return f"{change:+.1f}%"
+
+
+    # =========================================================
+    # 15. 기간 성과 카드
+    # =========================================================
+
+    st.subheader(
+        "📊 선택 기간 성과"
+    )
+
+    def _count_public_uploads_for_period(_start, _end):
+        _count = 0
+        for _video in public_videos:
+            _raw = _video.get("published_raw")
+            if not _raw:
+                continue
+            try:
+                _dt = datetime.fromisoformat(
+                    _raw.replace("Z", "+00:00")
+                ).astimezone(KST)
+                if _start <= _dt.date() <= _end:
+                    _count += 1
+            except Exception:
+                pass
+        return _count
+
+    _previous_upload_count = _count_public_uploads_for_period(
+        previous_start,
+        previous_end,
+    )
+    _show_period_delta = _previous_upload_count > 0
+
+    if not _show_period_delta:
+        st.warning(
+            "⚠️ 이전 비교기간에 공개 영상 업로드가 0개라 증감률은 숨겼습니다. "
+            "현재 기간의 실제 수치만 확인하세요."
+        )
+
+    c1, c2, c3, c4 = (
+        st.columns(4)
+    )
+
+
+    c1.metric(
+        "조회수",
+        f"{current_summary['views']:,}회",
+        change_text(
+            current_summary["views"],
+            previous_summary["views"],
+        ) if _show_period_delta else None,
+    )
+
+
+    c2.metric(
+        "순구독자",
+        (
+            f"{current_summary['net_subscribers']:+,}명"
+        ),
+        change_text(
+            current_summary[
+                "net_subscribers"
+            ],
+            previous_summary[
+                "net_subscribers"
+            ],
+        ) if _show_period_delta else None,
+    )
+
+
+    c3.metric(
+        "시청시간",
+        format_watch_time(
+            current_summary[
+                "watch_minutes"
+            ]
+        ),
+        change_text(
+            current_summary[
+                "watch_minutes"
+            ],
+            previous_summary[
+                "watch_minutes"
+            ],
+        ) if _show_period_delta else None,
+    )
+
+
+    c4.metric(
+        "좋아요",
+        f"{current_summary['likes']:,}개",
+        change_text(
+            current_summary["likes"],
+            previous_summary["likes"],
+        ) if _show_period_delta else None,
+    )
+
+
+    c1, c2, c3, c4 = (
+        st.columns(4)
+    )
+
+
+    c1.metric(
+        "구독자 획득",
+        (
+            f"+{current_summary['subscribers_gained']:,}명"
+        )
+    )
+
+
+    c2.metric(
+        "구독자 이탈",
+        (
+            f"-{current_summary['subscribers_lost']:,}명"
+        )
+    )
+
+
+    c3.metric(
+        "댓글",
+        f"{current_summary['comments']:,}개"
+    )
+
+
+    c4.metric(
+        "공유",
+        f"{current_summary['shares']:,}회"
+    )
+
+
+    st.caption(
+        f"비교 기간: "
+        f"{previous_start} ~ {previous_end}"
+    )
+
+    st.divider()
+
+
+    # =========================================================
+    # 16. 일별 데이터
+    # =========================================================
+
+    try:
+
+        daily_data = (
+            get_daily_channel_data(
+                yt_analytics,
+                start_date,
+                end_date,
+            )
+        )
+
+    except Exception as e:
+
+        daily_data = []
 
         st.warning(
-            "그날의 영상별 데이터를 "
-            "불러오지 못했습니다."
+            "일별 데이터를 불러오지 못했습니다."
         )
 
         st.code(
@@ -1699,16 +1242,321 @@ if day_summary:
         )
 
 
-    video_lookup = {
+    if daily_data:
 
-        video["video_id"]:
-            video
+        daily_df = pd.DataFrame(daily_data)
+        daily_df["date"] = pd.to_datetime(daily_df["date"])
 
-        for video in videos
-    }
+        # 데이터가 없는 날짜도 0으로 채움
+        full_dates = pd.date_range(start=start_date, end=end_date, freq="D")
+        daily_df = daily_df.set_index("date").reindex(full_dates).fillna(0)
+        daily_df.index.name = "날짜"
+        daily_df.index = [dt.strftime("%m/%d") for dt in daily_df.index]
 
-    # 당일 업로드 영상 vs 기존 영상 조회수 기여도
-    uploaded_ids_for_day = set()
+        st.subheader("📈 일별 조회수")
+        st.line_chart(daily_df[["views"]], use_container_width=True, height=260)
+
+        st.subheader("👤 일별 순구독자")
+        st.bar_chart(daily_df[["net_subscribers"]], use_container_width=True, height=260)
+
+    else:
+        st.info("선택한 기간에 일별 Analytics 데이터가 없습니다.")
+
+    st.divider()
+
+
+    def add_excel_table(ws, table_name):
+        """Excel 실제 표(Table) + 필터/정렬."""
+        if ws.max_row < 2 or ws.max_column < 1:
+            return
+        safe_name = re.sub(r"[^A-Za-z0-9_]", "_", table_name)
+        if not safe_name or safe_name[0].isdigit():
+            safe_name = "T_" + safe_name
+        table = Table(displayName=safe_name, ref=ws.dimensions)
+        table.tableStyleInfo = TableStyleInfo(
+            name="TableStyleMedium2",
+            showFirstColumn=False,
+            showLastColumn=False,
+            showRowStripes=True,
+            showColumnStripes=False,
+        )
+        ws.add_table(table)
+
+
+    def call_with_retry(func, *args, attempts=2, delay=0.35, **kwargs):
+        """YouTube API의 일시적 5xx 오류를 짧게 재시도합니다."""
+        last_error = None
+        for attempt in range(attempts):
+            try:
+                return func(*args, **kwargs)
+            except Exception as exc:
+                last_error = exc
+                status = getattr(getattr(exc, "resp", None), "status", None)
+                if status is not None and int(status) < 500:
+                    raise
+                if attempt < attempts - 1:
+                    time.sleep(delay)
+        if last_error:
+            raise last_error
+
+
+    # =========================================================
+    # 17. 월간 성과 달력
+    # =========================================================
+
+    st.header("🗓️ 월간 성과 달력")
+
+    # 달력은 항상 현재 날짜가 속한 달부터 시작
+    if "calendar_month" not in st.session_state:
+        st.session_state.calendar_month = today.replace(day=1)
+
+    if "calendar_selected_day" not in st.session_state:
+        st.session_state.calendar_selected_day = today
+
+    calendar_month = st.session_state.calendar_month
+    left, center, right = st.columns([1, 3, 1])
+
+    with left:
+        if st.button("◀ 이전 달", use_container_width=True):
+            st.session_state.calendar_month = (calendar_month - timedelta(days=1)).replace(day=1)
+            st.rerun()
+
+    with center:
+        st.markdown(
+            f"<h3 style='text-align:center;'>{calendar_month.year}년 {calendar_month.month}월</h3>",
+            unsafe_allow_html=True,
+        )
+
+    with right:
+        next_month = (calendar_month.replace(day=28) + timedelta(days=4)).replace(day=1)
+        if st.button(
+            "다음 달 ▶",
+            use_container_width=True,
+            disabled=next_month > today.replace(day=1),
+        ):
+            st.session_state.calendar_month = next_month
+            st.rerun()
+
+    month_start = calendar_month
+    last_day = calendar.monthrange(calendar_month.year, calendar_month.month)[1]
+    month_end = min(date(calendar_month.year, calendar_month.month, last_day), today)
+
+    try:
+        month_daily_data = get_daily_channel_data(yt_analytics, month_start, month_end)
+    except Exception:
+        month_daily_data = []
+
+    month_lookup = {item["date"]: item for item in month_daily_data}
+
+
+    def make_monthly_excel(month_daily_rows, month_value, all_public_videos):
+        """
+        달력에서 선택한 달을 실제 분석용 엑셀로 내보냅니다.
+
+        1시트: 월간 일별 성과
+        2시트: 그달 업로드 영상
+        3시트: 월간 요약
+        """
+        output = BytesIO()
+
+        # -----------------------------
+        # 그달 업로드 영상 정리
+        # -----------------------------
+        uploaded_rows = []
+        upload_by_date = {}
+
+        for video in all_public_videos:
+            published_raw = video.get("published_raw")
+            if not published_raw:
+                continue
+
+            try:
+                published_dt = datetime.fromisoformat(
+                    published_raw.replace("Z", "+00:00")
+                ).astimezone(KST)
+            except Exception:
+                continue
+
+            if (
+                published_dt.year == month_value.year
+                and published_dt.month == month_value.month
+            ):
+                date_key = published_dt.strftime("%Y-%m-%d")
+                upload_by_date.setdefault(date_key, []).append(video.get("title", ""))
+
+                uploaded_rows.append({
+                    "업로드일(KST)": published_dt.strftime("%Y-%m-%d %H:%M"),
+                    "제목": video.get("title", ""),
+                    "조회수": int(video.get("views", 0)),
+                    "좋아요": int(video.get("likes", 0)),
+                    "댓글": int(video.get("comments", 0)),
+                    "공유": int(video.get("shares", 0)),
+                    "평균 시청시간(초)": round(float(video.get("avg_duration", 0)), 1),
+                    "평균 시청률(%)": round(float(video.get("avg_percentage", 0)), 1),
+                    "순구독자": int(video.get("net_subs", 0)),
+                    "좋아요율(%)": round(float(video.get("like_rate", 0)), 2),
+                    "구독전환율(%)": round(float(video.get("sub_conversion_rate", 0)), 3),
+                    "성과점수": (
+                        video.get("performance_score")
+                        if video.get("performance_score") is not None
+                        else "평가 보류"
+                    ),
+                    "성과등급": video.get("performance_grade", "-"),
+                })
+
+        month_upload_df = pd.DataFrame(uploaded_rows)
+
+        # -----------------------------
+        # 날짜별 Analytics 정리
+        # 데이터가 없는 날짜도 0으로 포함
+        # -----------------------------
+        daily_lookup = {
+            str(item.get("date", "")): item
+            for item in month_daily_rows
+        }
+
+        last_day = calendar.monthrange(month_value.year, month_value.month)[1]
+        calendar_last_date = date(month_value.year, month_value.month, last_day)
+
+        if month_value.year == today.year and month_value.month == today.month:
+            export_last_date = today
+        else:
+            export_last_date = calendar_last_date
+
+        weekday_ko = ["월", "화", "수", "목", "금", "토", "일"]
+        daily_export = []
+
+        current_date = date(month_value.year, month_value.month, 1)
+
+        while current_date <= export_last_date:
+            date_key = current_date.strftime("%Y-%m-%d")
+            item = daily_lookup.get(date_key, {})
+
+            watch_minutes = float(item.get("watch_minutes", 0) or 0)
+            uploaded_titles = upload_by_date.get(date_key, [])
+
+            daily_export.append({
+                "날짜": date_key,
+                "요일": weekday_ko[current_date.weekday()],
+                "조회수": int(item.get("views", 0) or 0),
+                "시청시간(시간)": round(watch_minutes / 60, 2),
+                "좋아요": int(item.get("likes", 0) or 0),
+                "댓글": int(item.get("comments", 0) or 0),
+                "공유": int(item.get("shares", 0) or 0),
+                "구독자 획득": int(item.get("subscribers_gained", 0) or 0),
+                "구독자 이탈": int(item.get("subscribers_lost", 0) or 0),
+                "순구독자": int(item.get("net_subscribers", 0) or 0),
+                "업로드 영상 수": len(uploaded_titles),
+                "업로드 영상": " / ".join(uploaded_titles),
+            })
+
+            current_date += timedelta(days=1)
+
+        month_daily_df = pd.DataFrame(daily_export)
+
+        # 맨 아래 합계 행
+        if not month_daily_df.empty:
+            total_row = {
+                "날짜": "합계",
+                "요일": "",
+                "조회수": int(month_daily_df["조회수"].sum()),
+                "시청시간(시간)": round(float(month_daily_df["시청시간(시간)"].sum()), 2),
+                "좋아요": int(month_daily_df["좋아요"].sum()),
+                "댓글": int(month_daily_df["댓글"].sum()),
+                "공유": int(month_daily_df["공유"].sum()),
+                "구독자 획득": int(month_daily_df["구독자 획득"].sum()),
+                "구독자 이탈": int(month_daily_df["구독자 이탈"].sum()),
+                "순구독자": int(month_daily_df["순구독자"].sum()),
+                "업로드 영상 수": int(month_daily_df["업로드 영상 수"].sum()),
+                "업로드 영상": "",
+            }
+            month_daily_df = pd.concat(
+                [month_daily_df, pd.DataFrame([total_row])],
+                ignore_index=True,
+            )
+
+        # -----------------------------
+        # 월간 요약
+        # -----------------------------
+        data_only_df = month_daily_df[month_daily_df["날짜"] != "합계"].copy()
+
+        summary_df = pd.DataFrame([
+            ["채널명", channel_info.get("channel_name", channel_info.get("title", ""))],
+            ["대상 월", f"{month_value.year}-{month_value.month:02d}"],
+            ["월 조회수", int(data_only_df["조회수"].sum()) if not data_only_df.empty else 0],
+            ["월 순구독자", int(data_only_df["순구독자"].sum()) if not data_only_df.empty else 0],
+            ["월 시청시간(시간)", round(float(data_only_df["시청시간(시간)"].sum()), 2) if not data_only_df.empty else 0],
+            ["월 좋아요", int(data_only_df["좋아요"].sum()) if not data_only_df.empty else 0],
+            ["월 댓글", int(data_only_df["댓글"].sum()) if not data_only_df.empty else 0],
+            ["월 공유", int(data_only_df["공유"].sum()) if not data_only_df.empty else 0],
+            ["그달 업로드 영상", len(month_upload_df)],
+            ["생성 시각", datetime.now(KST).strftime("%Y-%m-%d %H:%M:%S KST")],
+        ], columns=["항목", "값"])
+
+        # -----------------------------
+        # Excel 출력
+        # -----------------------------
+        with pd.ExcelWriter(output, engine="openpyxl") as writer:
+            # 열자마자 상세 데이터가 먼저 보이게 함
+            month_daily_df.to_excel(writer, sheet_name="월간 일별 성과", index=False)
+            month_upload_df.to_excel(writer, sheet_name="그달 업로드 영상", index=False)
+            summary_df.to_excel(writer, sheet_name="월간 요약", index=False)
+
+            for sheet_name in writer.book.sheetnames:
+                ws = writer.book[sheet_name]
+                ws.freeze_panes = "A2"
+                ws.auto_filter.ref = ws.dimensions
+
+                header_map = {
+                    cell.value: cell.column_letter
+                    for cell in ws[1]
+                    if cell.value is not None
+                }
+
+                for column_cells in ws.columns:
+                    max_length = 0
+                    column_letter = column_cells[0].column_letter
+
+                    for cell in column_cells:
+                        try:
+                            cell_length = len(str(cell.value)) if cell.value is not None else 0
+                            max_length = max(max_length, cell_length)
+                        except Exception:
+                            pass
+
+                    ws.column_dimensions[column_letter].width = min(
+                        max(max_length + 3, 11),
+                        48,
+                    )
+
+                # 날짜는 무조건 문자열로
+                for header in ["날짜", "업로드일(KST)"]:
+                    if header in header_map:
+                        col = header_map[header]
+                        for row in range(2, ws.max_row + 1):
+                            ws[f"{col}{row}"].number_format = "@"
+
+                if "날짜" in header_map:
+                    ws.column_dimensions[header_map["날짜"]].width = 14
+
+                if "업로드일(KST)" in header_map:
+                    ws.column_dimensions[header_map["업로드일(KST)"]].width = 21
+
+                if "제목" in header_map:
+                    ws.column_dimensions[header_map["제목"]].width = 42
+
+                if "업로드 영상" in header_map:
+                    ws.column_dimensions[header_map["업로드 영상"]].width = 48
+
+            for idx, sheet_name in enumerate(writer.book.sheetnames, start=1):
+                add_excel_table(writer.book[sheet_name], f"MonthlyTable_{idx}")
+
+        output.seek(0)
+        return output.getvalue()
+
+
+    # 공개 영상을 올린 날짜(KST)
+    upload_dates = set()
     for video in public_videos:
         published_raw = video.get("published_raw")
         if not published_raw:
@@ -1717,66 +1565,379 @@ if day_summary:
             published_dt = datetime.fromisoformat(
                 published_raw.replace("Z", "+00:00")
             ).astimezone(KST)
-            if published_dt.date() == selected_day:
-                uploaded_ids_for_day.add(video["video_id"])
+            upload_dates.add(published_dt.date())
         except Exception:
             pass
 
-    new_video_views = sum(
-        item["views"] for item in day_video_data
-        if item["video_id"] in uploaded_ids_for_day
+    weekday_names = ["월", "화", "수", "목", "금", "토", "일"]
+    for column, name in zip(st.columns(7), weekday_names):
+        column.markdown(f"<div style='text-align:center;'><b>{name}</b></div>", unsafe_allow_html=True)
+
+    for week in calendar.monthcalendar(calendar_month.year, calendar_month.month):
+        columns = st.columns(7)
+        for day_index, day_number in enumerate(week):
+            if day_number == 0:
+                columns[day_index].write("")
+                continue
+
+            current_day = date(calendar_month.year, calendar_month.month, day_number)
+            day_key = current_day.strftime("%Y-%m-%d")
+            has_analytics_row = day_key in month_lookup
+            day_data = month_lookup.get(day_key, {})
+            views = int(day_data.get("views", 0))
+            net_subscribers = int(day_data.get("net_subscribers", 0))
+
+            if current_day > today:
+                columns[day_index].button(
+                    f"{day_number}일\n\n-",
+                    key=f"future_{current_day}",
+                    disabled=True,
+                    use_container_width=True,
+                )
+                continue
+
+            if views >= 10000:
+                view_text = f"{views / 10000:.1f}만"
+            elif views >= 1000:
+                view_text = f"{views / 1000:.1f}천"
+            else:
+                view_text = f"{views:,}"
+
+            subscriber_text = f"\n👤 {net_subscribers:+d}" if net_subscribers != 0 else ""
+            upload_mark = " 🎬" if current_day in upload_dates else ""
+
+            # 최근 2일은 Analytics 행 자체가 없으면 0으로 단정하지 않음
+            is_recent_calendar_day = 0 <= (today - current_day).days <= 2
+            if is_recent_calendar_day and not has_analytics_row:
+                label = f"{day_number}일{upload_mark}\n\n⏳ 집계 중"
+            elif views == 0 and net_subscribers == 0:
+                label = f"{day_number}일{upload_mark}"
+            else:
+                label = f"{day_number}일{upload_mark}\n\n👁 {view_text}{subscriber_text}"
+
+            if columns[day_index].button(
+                label,
+                key=f"calendar_{current_day}",
+                use_container_width=True,
+            ):
+                st.session_state.calendar_selected_day = current_day
+                st.rerun()
+
+    st.caption("날짜를 누르면 아래에서 그날의 상세 성과를 확인할 수 있습니다.")
+
+    st.download_button(
+        f"📥 {calendar_month.year}년 {calendar_month.month}월 성과 엑셀",
+        data=make_monthly_excel(month_daily_data, calendar_month, public_videos),
+        file_name=f"shorts_monthly_{calendar_month.year}_{calendar_month.month:02d}.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        use_container_width=True,
+        key=f"monthly_excel_{calendar_month.year}_{calendar_month.month}",
     )
-    old_video_views = max(day_summary["views"] - new_video_views, 0)
 
-    st.subheader("🧩 그날 조회수 구성")
+    st.divider()
 
-    day_total_views = max(day_summary["views"], 0)
+    # =========================================================
+    # 18. 특정 날짜 선택
+    # =========================================================
 
-    if day_total_views > 0:
-        new_video_share = (new_video_views / day_total_views) * 100
-        old_video_share = (old_video_views / day_total_views) * 100
-    else:
-        new_video_share = 0.0
-        old_video_share = 0.0
-
-    cc1, cc2 = st.columns(2)
-
-    cc1.metric(
-        "당일 업로드 영상",
-        f"{new_video_views:,}회",
-        f"{new_video_share:.1f}% 기여",
+    st.header(
+        "🔎 하루 자세히 보기"
     )
 
-    cc2.metric(
-        "기존 영상",
-        f"{old_video_views:,}회",
-        f"{old_video_share:.1f}% 기여",
-    )
+    if "applied_detail_day" not in st.session_state:
+        st.session_state.applied_detail_day = st.session_state.get(
+            "calendar_selected_day",
+            end_date,
+        )
 
-    if is_recent_detail and day_total_views == 0:
-        st.info(
-            "📌 현재 0회는 '확정 0회'가 아니라 Analytics 일별 집계 대기일 가능성이 있습니다. "
-            "오늘 업로드 영상의 실제 누적 조회수는 아래 '그날 업로드한 영상'의 현재 조회수를 확인하세요."
+    detail_day_input = st.date_input(
+        "확인할 날짜",
+        value=st.session_state.get("calendar_selected_day", end_date),
+        min_value=date(2005, 1, 1),
+        max_value=today,
+        key="detail_day_input",
+    )
+    st.session_state.calendar_selected_day = detail_day_input
+
+    if st.button(
+        "🔍 조회하기",
+        type="primary",
+        use_container_width=True,
+        key="apply_detail_day_button",
+    ):
+        st.session_state.applied_detail_day = detail_day_input
+
+    selected_day = st.session_state.applied_detail_day
+    st.caption(f"현재 조회 중인 날짜: {selected_day}")
+
+    # 최근 날짜는 YouTube Analytics의 일별 집계가 아직 완료되지 않았을 수 있음
+    detail_age_days = (today - selected_day).days
+    is_recent_detail = 0 <= detail_age_days <= 2
+    if is_recent_detail:
+        st.warning(
+            "⏳ 최근 날짜의 YouTube Analytics 데이터는 아직 집계 중일 수 있습니다. "
+            "아래 일별 수치가 0으로 보여도 실제 0이라고 단정할 수 없습니다. "
+            "영상 아래의 '현재 조회수'는 누적값이고, 여기의 '그날 조회수'는 날짜별 Analytics 값입니다."
         )
 
 
-    if day_video_data:
+    try:
+
+        day_summary = (
+            get_period_summary(
+                yt_analytics,
+                selected_day,
+                selected_day,
+            )
+        )
+
+    except Exception as e:
+
+        if is_recent_detail:
+            st.warning(
+                "⏳ YouTube에서 이 날짜의 Analytics를 아직 집계 중이거나 "
+                "일시적으로 조회할 수 없습니다."
+            )
+        else:
+            st.error("선택 날짜 데이터를 가져오지 못했습니다.")
+
+        with st.expander("기술 오류 상세보기"):
+            st.code(str(e))
+
+        day_summary = None
+
+
+    if day_summary:
 
         st.subheader(
-            "🔥 그날 조회수를 만든 영상"
+            f"📅 {selected_day}"
         )
 
-        for rank, performance in enumerate(
-            day_video_data[:5],
-            start=1,
-        ):
+        c1, c2, c3, c4 = (
+            st.columns(4)
+        )
 
-            video = video_lookup.get(
-                performance["video_id"]
+        _recent_all_zero = is_recent_detail and (
+            day_summary.get("views", 0) == 0
+            and day_summary.get("watch_minutes", 0) == 0
+            and day_summary.get("likes", 0) == 0
+            and day_summary.get("net_subscribers", 0) == 0
+        )
+
+        if _recent_all_zero:
+            c1.metric("그날 조회수", "집계 중")
+            c2.metric("그날 순구독자", "집계 중")
+            c3.metric("그날 시청시간", "집계 중")
+            c4.metric("그날 좋아요", "집계 중")
+            st.info(
+                "📌 최근 날짜라 아직 일별 Analytics가 확정되지 않았습니다. "
+                "아래 업로드 영상의 '현재 조회수'는 정상적으로 확인할 수 있습니다."
+            )
+        else:
+            c1.metric("그날 조회수", f"+{day_summary['views']:,}회")
+            c2.metric("그날 순구독자", f"{day_summary['net_subscribers']:+,}명")
+            c3.metric("그날 시청시간", format_watch_time(day_summary["watch_minutes"]))
+            c4.metric("그날 좋아요", f"+{day_summary['likes']:,}개")
+
+
+        # =====================================================
+        # 그날 영상별 성과
+        # =====================================================
+
+        try:
+
+            day_video_data = (
+                get_video_performance_for_day(
+                    yt_analytics,
+                    selected_day,
+                )
             )
 
-            if not video:
+        except Exception as e:
+
+            day_video_data = []
+
+            st.warning(
+                "⏳ 그날의 영상별 Analytics가 아직 집계 중이거나 일시적으로 조회되지 않았습니다."
+            )
+
+            with st.expander("기술 오류 상세보기"):
+                st.code(str(e))
+
+
+        video_lookup = {
+
+            video["video_id"]:
+                video
+
+            for video in videos
+        }
+
+        # 당일 업로드 영상 vs 기존 영상 조회수 기여도
+        uploaded_ids_for_day = set()
+        for video in public_videos:
+            published_raw = video.get("published_raw")
+            if not published_raw:
                 continue
+            try:
+                published_dt = datetime.fromisoformat(
+                    published_raw.replace("Z", "+00:00")
+                ).astimezone(KST)
+                if published_dt.date() == selected_day:
+                    uploaded_ids_for_day.add(video["video_id"])
+            except Exception:
+                pass
+
+        new_video_views = sum(
+            item["views"] for item in day_video_data
+            if item["video_id"] in uploaded_ids_for_day
+        )
+        old_video_views = max(day_summary["views"] - new_video_views, 0)
+
+        st.subheader("🧩 그날 조회수 구성")
+
+        day_total_views = max(day_summary["views"], 0)
+
+        if day_total_views > 0:
+            new_video_share = (new_video_views / day_total_views) * 100
+            old_video_share = (old_video_views / day_total_views) * 100
+        else:
+            new_video_share = 0.0
+            old_video_share = 0.0
+
+        cc1, cc2 = st.columns(2)
+
+        if is_recent_detail and day_total_views == 0:
+            cc1.metric("당일 업로드 영상", "집계 중")
+            cc2.metric("기존 영상", "집계 중")
+            st.info(
+                "📌 조회수 구성도 아직 집계 중입니다. "
+                "오늘 업로드 영상의 실제 누적 조회수는 아래에서 확인하세요."
+            )
+        else:
+            cc1.metric(
+                "당일 업로드 영상",
+                f"{new_video_views:,}회",
+                f"{new_video_share:.1f}% 기여",
+            )
+            cc2.metric(
+                "기존 영상",
+                f"{old_video_views:,}회",
+                f"{old_video_share:.1f}% 기여",
+            )
+
+
+        if day_video_data:
+
+            st.subheader(
+                "🔥 그날 조회수를 만든 영상"
+            )
+
+            for rank, performance in enumerate(
+                day_video_data[:5],
+                start=1,
+            ):
+
+                video = video_lookup.get(
+                    performance["video_id"]
+                )
+
+                if not video:
+                    continue
+
+                col_img, col_info = (
+                    st.columns(
+                        [1, 5]
+                    )
+                )
+
+                with col_img:
+
+                    if video[
+                        "thumbnail"
+                    ]:
+
+                        st.image(
+                            video[
+                                "thumbnail"
+                            ],
+                            width=140
+                        )
+
+
+                with col_info:
+
+                    st.markdown(
+                        f"### {rank}위 · "
+                        f"{video['title']}"
+                    )
+
+                    st.write(
+                        f"👁️ 그날 "
+                        f"+{performance['views']:,}회"
+                        f"  |  "
+                        f"👍 "
+                        f"+{performance['likes']:,}"
+                        f"  |  "
+                        f"👤 "
+                        f"{performance['net_subscribers']:+d}"
+                    )
+
+            st.divider()
+
+
+    # =========================================================
+    # 18. 그날 업로드한 영상
+    # =========================================================
+
+    uploaded_that_day = []
+
+
+    for video in public_videos:
+
+        published_raw = (
+            video.get(
+                "published_raw"
+            )
+        )
+
+        if not published_raw:
+            continue
+
+        try:
+
+            published_dt = (
+                datetime.fromisoformat(
+                    published_raw.replace(
+                        "Z",
+                        "+00:00"
+                    )
+                )
+            )
+
+            published_dt = published_dt.astimezone(KST)
+
+            if (
+                published_dt.date()
+                == selected_day
+            ):
+
+                uploaded_that_day.append(
+                    video
+                )
+
+        except Exception:
+            pass
+
+
+    st.subheader(
+        "🎬 그날 업로드한 영상"
+    )
+
+
+    if uploaded_that_day:
+
+        for video in uploaded_that_day:
 
             col_img, col_info = (
                 st.columns(
@@ -1801,1261 +1962,1106 @@ if day_summary:
             with col_info:
 
                 st.markdown(
-                    f"### {rank}위 · "
-                    f"{video['title']}"
+                    f"**{video['title']}**"
                 )
 
                 st.write(
-                    f"👁️ 그날 "
-                    f"+{performance['views']:,}회"
-                    f"  |  "
-                    f"👍 "
-                    f"+{performance['likes']:,}"
-                    f"  |  "
-                    f"👤 "
-                    f"{performance['net_subscribers']:+d}"
+                    f"현재 조회수 "
+                    f"{video['views']:,}회"
                 )
 
-        st.divider()
-
-
-# =========================================================
-# 18. 그날 업로드한 영상
-# =========================================================
-
-uploaded_that_day = []
-
-
-for video in public_videos:
-
-    published_raw = (
-        video.get(
-            "published_raw"
-        )
-    )
-
-    if not published_raw:
-        continue
-
-    try:
-
-        published_dt = (
-            datetime.fromisoformat(
-                published_raw.replace(
-                    "Z",
-                    "+00:00"
-                )
-            )
-        )
-
-        published_dt = published_dt.astimezone(KST)
-
-        if (
-            published_dt.date()
-            == selected_day
-        ):
-
-            uploaded_that_day.append(
-                video
-            )
-
-    except Exception:
-        pass
-
-
-st.subheader(
-    "🎬 그날 업로드한 영상"
-)
-
-
-if uploaded_that_day:
-
-    for video in uploaded_that_day:
-
-        col_img, col_info = (
-            st.columns(
-                [1, 5]
-            )
-        )
-
-        with col_img:
-
-            if video[
-                "thumbnail"
-            ]:
-
-                st.image(
-                    video[
-                        "thumbnail"
-                    ],
-                    width=140
+                st.write(
+                    f"영상 길이 "
+                    f"{video['duration']}"
                 )
 
-
-        with col_info:
-
-            st.markdown(
-                f"**{video['title']}**"
-            )
-
-            st.write(
-                f"현재 조회수 "
-                f"{video['views']:,}회"
-            )
-
-            st.write(
-                f"영상 길이 "
-                f"{video['duration']}"
-            )
-
-else:
-
-    st.write(
-        "이날 업로드한 영상이 없습니다."
-    )
-
-
-st.divider()
-
-
-# =========================================================
-# 19. 공개 영상 전체 성과
-# =========================================================
-
-st.header(
-    "🎯 전체 공개 영상 분석"
-)
-
-
-if public_videos:
-
-    total_views = sum(
-        video["views"]
-        for video in public_videos
-    )
-
-    average_views = (
-        total_views
-        / len(public_videos)
-    )
-
-    best_video = max(
-        public_videos,
-        key=lambda x: x["views"]
-    )
-
-    total_watch_minutes = sum(
-        video["watch_minutes"]
-        for video in public_videos
-    )
-
-    total_net_subscribers = sum(
-        video["net_subs"]
-        for video in public_videos
-    )
-
-
-    c1, c2, c3, c4 = (
-        st.columns(4)
-    )
-
-    c1.metric(
-        "전체 공개 영상 평균 조회수",
-        f"{average_views:,.0f}회"
-    )
-
-    c2.metric(
-        "최고 조회수",
-        f"{best_video['views']:,}회"
-    )
-
-    c3.metric(
-        "총 시청시간",
-        format_watch_time(
-            total_watch_minutes
-        )
-    )
-
-    c4.metric(
-        "공개 영상에서 발생한 순구독자",
-        f"{total_net_subscribers:+,}명"
-    )
-
-
-st.divider()
-
-
-# =========================================================
-# 20. 자동 성과 리포트 V6
-# =========================================================
-
-st.header("④ 🧠 자동 성과 리포트 V6.4")
-st.caption(f"🕒 데이터 조회 시각: {datetime.now(KST).strftime('%Y-%m-%d %H:%M KST')} · 최근 날짜의 Analytics는 지연될 수 있습니다.")
-st.caption(
-    "원인을 추측하지 않고 실제 데이터와 내 채널 기준선만 비교합니다. "
-    "조회수 100회 이상 + 영상별 Analytics가 집계된 공개 영상만 분석합니다."
-)
-
-report_videos = [
-    v for v in public_videos
-    if v.get("views", 0) >= 100 and v.get("video_id") in video_analytics
-]
-st.caption(
-    f"분석 대상: 공개 영상 {len(public_videos)}개 중 {len(report_videos)}개 · "
-    f"마지막 조회: {datetime.now(KST).strftime('%Y-%m-%d %H:%M KST')}"
-)
-
-# -----------------------------
-# 채널 추세
-# -----------------------------
-st.markdown("### 📈 채널 추세")
-
-trend_option = st.selectbox(
-    "추세 분석 기간",
-    ["최근 7일", "최근 14일", "최근 28일", "직접 선택"],
-    key="trend_period_option_v61",
-)
-
-trend_last_day = today - timedelta(days=1)
-
-if trend_option == "최근 7일":
-    trend_end = trend_last_day
-    trend_start = trend_end - timedelta(days=6)
-elif trend_option == "최근 14일":
-    trend_end = trend_last_day
-    trend_start = trend_end - timedelta(days=13)
-elif trend_option == "최근 28일":
-    trend_end = trend_last_day
-    trend_start = trend_end - timedelta(days=27)
-else:
-    tc1, tc2 = st.columns(2)
-    with tc1:
-        trend_start = st.date_input(
-            "추세 시작일",
-            value=trend_last_day - timedelta(days=6),
-            max_value=trend_last_day,
-            key="trend_start_v61",
-        )
-    with tc2:
-        trend_end = st.date_input(
-            "추세 종료일",
-            value=trend_last_day,
-            max_value=trend_last_day,
-            key="trend_end_v61",
-        )
-
-if trend_start > trend_end:
-    st.warning("시작일이 종료일보다 늦어 종료일 기준으로 맞췄습니다.")
-    trend_start = trend_end
-
-trend_days = (trend_end - trend_start).days + 1
-trend_prev_end = trend_start - timedelta(days=1)
-trend_prev_start = trend_prev_end - timedelta(days=trend_days - 1)
-
-def _count_uploads(start_d, end_d):
-    count = 0
-    for _v in public_videos:
-        _raw = _v.get("published_raw")
-        if not _raw:
-            continue
-        try:
-            _dt = datetime.fromisoformat(_raw.replace("Z", "+00:00")).astimezone(KST)
-            if start_d <= _dt.date() <= end_d:
-                count += 1
-        except Exception:
-            pass
-    return count
-
-def _trend_change(cur, prev):
-    if prev == 0:
-        return "계산 불가" if cur != 0 else "0%"
-    return f"{((cur-prev)/abs(prev))*100:+.1f}%"
-
-try:
-    trend_now = get_period_summary(yt_analytics, trend_start, trend_end)
-    trend_prev = get_period_summary(yt_analytics, trend_prev_start, trend_prev_end)
-    trend_daily_rows = get_daily_channel_data(yt_analytics, trend_start, trend_end)
-except Exception as exc:
-    trend_now = None
-    trend_prev = None
-    trend_daily_rows = []
-    st.warning("채널 추세 데이터를 일부 불러오지 못했습니다.")
-    with st.expander("오류 내용"):
-        st.code(str(exc))
-
-if trend_now and trend_prev:
-    now_uploads = _count_uploads(trend_start, trend_end)
-    prev_uploads = _count_uploads(trend_prev_start, trend_prev_end)
-
-    st.caption(
-        f"현재 {trend_start} ~ {trend_end} ↔ 이전 {trend_prev_start} ~ {trend_prev_end} · 오늘 제외"
-    )
-
-    _views_change_text = (
-        "비교 주의"
-        if prev_uploads == 0
-        else _trend_change(trend_now["views"], trend_prev["views"])
-    )
-
-    trend_table = pd.DataFrame([
-        ["조회수", f"{trend_now['views']:,}회", f"{trend_prev['views']:,}회",
-         _views_change_text],
-        ["시청시간", f"{trend_now['watch_minutes']/60:,.1f}시간",
-         f"{trend_prev['watch_minutes']/60:,.1f}시간",
-         _trend_change(trend_now["watch_minutes"], trend_prev["watch_minutes"])],
-        ["순구독자", f"{trend_now['net_subscribers']:+,}명",
-         f"{trend_prev['net_subscribers']:+,}명",
-         f"{trend_now['net_subscribers']-trend_prev['net_subscribers']:+,}명"],
-        ["업로드", f"{now_uploads:,}개", f"{prev_uploads:,}개",
-         f"{now_uploads-prev_uploads:+,}개"],
-    ], columns=["지표", "현재 기간", "이전 기간", "변화"])
-
-    st.dataframe(trend_table, hide_index=True, use_container_width=True)
-
-    if prev_uploads == 0:
-        st.warning(
-            "⚠️ 이전 기간 업로드가 0개입니다. 조회수 증가율이 커 보여도 "
-            "콘텐츠 자체의 성과가 같은 비율로 개선됐다고 볼 수는 없습니다."
-        )
-    elif trend_prev["views"] == 0:
-        st.warning(
-            "⚠️ 이전 기간 조회수가 0회라 변화율 비교가 의미 없습니다."
-        )
-
-    if now_uploads > 0 and prev_uploads > 0:
-        now_per_upload = trend_now["views"] / now_uploads
-        prev_per_upload = trend_prev["views"] / prev_uploads
-        tc1, tc2 = st.columns(2)
-        tc1.metric("조회수 ÷ 업로드 수 (참고)", f"{now_per_upload:,.0f}회")
-        tc2.metric("이전 기간", f"{prev_per_upload:,.0f}회")
-        st.caption(
-            "※ 이 값에는 기존 영상 조회수도 포함됩니다. 신규 영상 1편의 실제 평균 조회수는 아닙니다."
-        )
     else:
-        st.caption("※ 두 기간 모두 업로드가 있을 때만 '조회수 ÷ 업로드 수'를 표시합니다.")
 
-    if trend_daily_rows:
-        trend_df = pd.DataFrame(trend_daily_rows)
-        if not trend_df.empty and "date" in trend_df.columns and "views" in trend_df.columns:
-            trend_df["date"] = pd.to_datetime(trend_df["date"])
-            trend_df = trend_df.set_index("date")
-            st.markdown("#### 일별 조회수 흐름")
-            st.line_chart(trend_df[["views"]], use_container_width=True, height=240)
+        st.write(
+            "이날 업로드한 영상이 없습니다."
+        )
 
-st.divider()
 
-if report_videos:
-    base_views = sum(v["views"] for v in report_videos) / len(report_videos)
-    median_views = float(pd.Series([v["views"] for v in report_videos]).median())
-    base_ret = sum(v["avg_percentage"] for v in report_videos) / len(report_videos)
-    base_like = sum(v["like_rate"] for v in report_videos) / len(report_videos)
-    base_sub = sum(v["sub_conversion_rate"] for v in report_videos) / len(report_videos)
+    st.divider()
 
-    st.markdown("### 📊 내 채널 기준선")
-    b1,b2,b3,b4,b5=st.columns(5)
-    b1.metric("분석 대상 평균 조회수", f"{base_views:,.0f}회")
-    b2.metric("분석 대상 중앙 조회수", f"{median_views:,.0f}회")
-    b3.metric("평균 시청률", f"{base_ret:.1f}%")
-    b4.metric("평균 좋아요율", f"{base_like:.2f}%")
-    b5.metric("평균 구독전환율", f"{base_sub:.3f}%")
-    st.caption("※ 위 기준선은 현재 분석 가능한 내 영상들의 비교값이며 YouTube 공식 기준이 아닙니다.")
+elif page == "📈 성장 분석":
+    # =========================================================
+    # 20. 자동 성과 리포트 V6
+    # =========================================================
 
-    st.markdown("### 🔬 영상별 데이터 비교")
+    st.header("📈 성장 분석")
+    st.caption(f"🕒 데이터 조회 시각: {datetime.now(KST).strftime('%Y-%m-%d %H:%M KST')} · 최근 날짜의 Analytics는 지연될 수 있습니다.")
     st.caption(
-        "한 줄에는 현재 성과만 간단히 표시합니다. 영상을 누르면 기준선 비교와 실제 일별 성장 흐름을 확인할 수 있습니다."
+        "원인을 추측하지 않고 실제 데이터와 내 채널 기준선만 비교합니다. "
+        "조회수 100회 이상 + 영상별 Analytics가 집계된 공개 영상만 분석합니다."
     )
 
-    # 실제 영상별 일별 Analytics는 한 번만 가져와 아래 모든 성장 비교에서 재사용합니다.
-    try:
-        _report_ids = [v["video_id"] for v in report_videos]
-        _published_dates_pt = []
-        _PT = ZoneInfo("America/Los_Angeles")
-        for _v in report_videos:
+    report_videos = [
+        v for v in public_videos
+        if v.get("views", 0) >= 100 and v.get("video_id") in video_analytics
+    ]
+    st.caption(
+        f"분석 대상: 공개 영상 {len(public_videos)}개 중 {len(report_videos)}개 · "
+        f"마지막 조회: {datetime.now(KST).strftime('%Y-%m-%d %H:%M KST')}"
+    )
+
+    # -----------------------------
+    # 채널 추세
+    # -----------------------------
+    st.markdown("### 📈 채널 추세")
+
+    trend_option = st.selectbox(
+        "추세 분석 기간",
+        ["최근 7일", "최근 14일", "최근 28일", "직접 선택"],
+        key="trend_period_option_v61",
+    )
+
+    trend_last_day = today - timedelta(days=1)
+
+    if trend_option == "최근 7일":
+        trend_end = trend_last_day
+        trend_start = trend_end - timedelta(days=6)
+    elif trend_option == "최근 14일":
+        trend_end = trend_last_day
+        trend_start = trend_end - timedelta(days=13)
+    elif trend_option == "최근 28일":
+        trend_end = trend_last_day
+        trend_start = trend_end - timedelta(days=27)
+    else:
+        tc1, tc2 = st.columns(2)
+        with tc1:
+            trend_start = st.date_input(
+                "추세 시작일",
+                value=trend_last_day - timedelta(days=6),
+                max_value=trend_last_day,
+                key="trend_start_v61",
+            )
+        with tc2:
+            trend_end = st.date_input(
+                "추세 종료일",
+                value=trend_last_day,
+                max_value=trend_last_day,
+                key="trend_end_v61",
+            )
+
+    if trend_start > trend_end:
+        st.warning("시작일이 종료일보다 늦어 종료일 기준으로 맞췄습니다.")
+        trend_start = trend_end
+
+    trend_days = (trend_end - trend_start).days + 1
+    trend_prev_end = trend_start - timedelta(days=1)
+    trend_prev_start = trend_prev_end - timedelta(days=trend_days - 1)
+
+    def _count_uploads(start_d, end_d):
+        count = 0
+        for _v in public_videos:
             _raw = _v.get("published_raw")
             if not _raw:
                 continue
             try:
-                _pdt = datetime.fromisoformat(_raw.replace("Z", "+00:00")).astimezone(_PT)
-                _published_dates_pt.append(_pdt.date())
+                _dt = datetime.fromisoformat(_raw.replace("Z", "+00:00")).astimezone(KST)
+                if start_d <= _dt.date() <= end_d:
+                    count += 1
             except Exception:
                 pass
+        return count
 
-        _growth_start = min(_published_dates_pt) if _published_dates_pt else today - timedelta(days=90)
-        _growth_end = today - timedelta(days=1)
+    def _trend_change(cur, prev):
+        if prev == 0:
+            return "계산 불가" if cur != 0 else "0%"
+        return f"{((cur-prev)/abs(prev))*100:+.1f}%"
 
-        daily_video_growth = (
-            get_daily_video_analytics(
-                yt_analytics,
-                _report_ids,
-                _growth_start,
-                _growth_end,
-            )
-            if _growth_start <= _growth_end
-            else {}
+    try:
+        trend_now = get_period_summary(yt_analytics, trend_start, trend_end)
+        trend_prev = get_period_summary(yt_analytics, trend_prev_start, trend_prev_end)
+        trend_daily_rows = get_daily_channel_data(yt_analytics, trend_start, trend_end)
+    except Exception as exc:
+        trend_now = None
+        trend_prev = None
+        trend_daily_rows = []
+        st.warning("채널 추세 데이터를 일부 불러오지 못했습니다.")
+        with st.expander("오류 내용"):
+            st.code(str(exc))
+
+    if trend_now and trend_prev:
+        now_uploads = _count_uploads(trend_start, trend_end)
+        prev_uploads = _count_uploads(trend_prev_start, trend_prev_end)
+
+        st.caption(
+            f"현재 {trend_start} ~ {trend_end} ↔ 이전 {trend_prev_start} ~ {trend_prev_end} · 오늘 제외"
         )
-        growth_error = None
-    except Exception as _growth_exc:
-        daily_video_growth = {}
-        growth_error = str(_growth_exc)
 
-    def _published_pt_date(video):
-        raw = video.get("published_raw")
-        if not raw:
-            return None
-        try:
-            return datetime.fromisoformat(raw.replace("Z", "+00:00")).astimezone(
-                ZoneInfo("America/Los_Angeles")
-            ).date()
-        except Exception:
-            return None
+        _views_change_text = (
+            "비교 주의"
+            if prev_uploads == 0
+            else _trend_change(trend_now["views"], trend_prev["views"])
+        )
 
-    def _growth_series(video):
-        pub_date = _published_pt_date(video)
-        if not pub_date:
-            return []
+        trend_table = pd.DataFrame([
+            ["조회수", f"{trend_now['views']:,}회", f"{trend_prev['views']:,}회",
+             _views_change_text],
+            ["시청시간", f"{trend_now['watch_minutes']/60:,.1f}시간",
+             f"{trend_prev['watch_minutes']/60:,.1f}시간",
+             _trend_change(trend_now["watch_minutes"], trend_prev["watch_minutes"])],
+            ["순구독자", f"{trend_now['net_subscribers']:+,}명",
+             f"{trend_prev['net_subscribers']:+,}명",
+             f"{trend_now['net_subscribers']-trend_prev['net_subscribers']:+,}명"],
+            ["업로드", f"{now_uploads:,}개", f"{prev_uploads:,}개",
+             f"{now_uploads-prev_uploads:+,}개"],
+        ], columns=["지표", "현재 기간", "이전 기간", "변화"])
 
-        rows = daily_video_growth.get(video.get("video_id"), [])
-        by_date = {str(r.get("date")): int(r.get("views", 0)) for r in rows}
+        st.dataframe(trend_table, hide_index=True, use_container_width=True)
 
-        # Analytics 날짜 기준 D0부터 어제까지. 없는 날짜는 0회로 채움.
-        last_day = today - timedelta(days=1)
-        if pub_date > last_day:
-            return []
-
-        out = []
-        cumulative = 0
-        d = pub_date
-        age = 0
-        while d <= last_day:
-            views = by_date.get(d.isoformat(), 0)
-            cumulative += views
-            out.append({
-                "D": age,
-                "date": d,
-                "daily_views": views,
-                "cumulative_views": cumulative,
-            })
-            d += timedelta(days=1)
-            age += 1
-        return out
-
-    growth_cache = {
-        v["video_id"]: _growth_series(v)
-        for v in report_videos
-    }
-
-    def _cum_at(video, d_index):
-        series = growth_cache.get(video.get("video_id"), [])
-        if len(series) <= d_index:
-            return None
-        return series[d_index]["cumulative_views"]
-
-    def _comparison_for(video):
-        series = growth_cache.get(video.get("video_id"), [])
-        if not series:
-            return None
-
-        max_d = series[-1]["D"]
-        milestone = 3 if max_d >= 3 else (1 if max_d >= 1 else 0)
-        current_value = _cum_at(video, milestone)
-        if current_value is None:
-            return None
-
-        peers = []
-        for other in report_videos:
-            val = _cum_at(other, milestone)
-            if val is not None:
-                peers.append((other.get("video_id"), val))
-
-        if not peers:
-            return None
-
-        values = [x[1] for x in peers]
-        median = float(pd.Series(values).median())
-        rank = 1 + sum(1 for _, val in peers if val > current_value)
-
-        return {
-            "milestone": milestone,
-            "value": current_value,
-            "median": median,
-            "rank": rank,
-            "sample": len(peers),
-        }
-
-    def _growth_state(video):
-        series = growth_cache.get(video.get("video_id"), [])
-        if len(series) < 4:
-            return "데이터 축적 중"
-
-        daily = [x["daily_views"] for x in series]
-        recent = daily[-2:]
-        previous = daily[-4:-2]
-
-        recent_avg = sum(recent) / len(recent)
-        previous_avg = sum(previous) / len(previous)
-
-        # 오래된 영상이 다시 살아나는 경우
-        if previous_avg > 0 and recent_avg >= previous_avg * 2 and recent_avg >= 100:
-            return "🔥 재상승"
-        if previous_avg == 0:
-            return "↗ 성장 중" if recent_avg > 0 else "→ 정체"
-        ratio = recent_avg / previous_avg
-        if ratio >= 1.25:
-            return "↗ 성장 중"
-        if ratio <= 0.60:
-            return "↘ 둔화"
-        return "→ 유지"
-
-    ordered=sorted(report_videos,key=lambda v:v.get("views",0),reverse=True)
-
-    def pct_diff(value, base):
-        return "비교 불가" if base == 0 else f"{((value-base)/abs(base))*100:+.1f}%"
-
-    def pp_diff(value, base, digits):
-        diff = value - base
-        threshold = {
-            1: 1.0,      # 시청률: ±1.0%p 이내는 비슷
-            2: 0.05,     # 좋아요율: ±0.05%p 이내는 비슷
-            3: 0.005,    # 구독전환율: ±0.005%p 이내는 비슷
-        }.get(digits, 0)
-        if abs(diff) <= threshold:
-            return "≈ 비슷"
-        return f"{diff:+.{digits}f}%p"
-
-    def compare_level(value, base, metric_name):
-        if metric_name == "조회수":
-            if base == 0:
-                return "similar"
-            diff_ratio = abs(value - base) / abs(base)
-            if diff_ratio <= 0.05:
-                return "similar"
-        elif metric_name == "시청률":
-            if abs(value - base) <= 1.0:
-                return "similar"
-        elif metric_name == "좋아요율":
-            if abs(value - base) <= 0.05:
-                return "similar"
-        elif metric_name == "구독전환율":
-            if abs(value - base) <= 0.005:
-                return "similar"
-
-        return "high" if value > base else "low"
-
-    for rank,v in enumerate(ordered,start=1):
-        published_text = "업로드일 확인 불가"
-        age_text = ""
-        raw = v.get("published_raw")
-        if raw:
-            try:
-                published_dt = datetime.fromisoformat(raw.replace("Z", "+00:00")).astimezone(KST)
-                published_date = published_dt.date()
-                age_days = max((today - published_date).days, 0)
-                published_text = published_date.strftime("%Y.%m.%d")
-                age_text = f" · 업로드 후 {age_days}일"
-            except Exception:
-                pass
-
-        _comp = _comparison_for(v)
-        _state = _growth_state(v)
-
-        if _comp and _comp["sample"] >= 5:
-            _same_age_text = (
-                f"D+{_comp['milestone']} {_comp['rank']}위/{_comp['sample']}개"
+        if prev_uploads == 0:
+            st.warning(
+                "⚠️ 이전 기간 업로드가 0개입니다. 조회수 증가율이 커 보여도 "
+                "콘텐츠 자체의 성과가 같은 비율로 개선됐다고 볼 수는 없습니다."
             )
-        elif _comp:
-            _same_age_text = f"비교 데이터 부족({_comp['sample']}개)"
+        elif trend_prev["views"] == 0:
+            st.warning(
+                "⚠️ 이전 기간 조회수가 0회라 변화율 비교가 의미 없습니다."
+            )
+
+        if now_uploads > 0 and prev_uploads > 0:
+            now_per_upload = trend_now["views"] / now_uploads
+            prev_per_upload = trend_prev["views"] / prev_uploads
+            tc1, tc2 = st.columns(2)
+            tc1.metric("조회수 ÷ 업로드 수 (참고)", f"{now_per_upload:,.0f}회")
+            tc2.metric("이전 기간", f"{prev_per_upload:,.0f}회")
+            st.caption(
+                "※ 이 값에는 기존 영상 조회수도 포함됩니다. 신규 영상 1편의 실제 평균 조회수는 아닙니다."
+            )
         else:
-            _same_age_text = "성장 데이터 집계 중"
-
-        summary = (
-            f"📅 {published_text}{age_text} | "
-            f"조회수 {v['views']:,} | {_same_age_text} | {_state}"
-        )
-
-        with st.expander(f"{rank}. {v['title']}  |  {summary}"):
-            rows=[
-                ["조회수",f"{v['views']:,}회",f"{base_views:,.0f}회",pct_diff(v["views"],base_views)],
-                ["평균 시청률",f"{v['avg_percentage']:.1f}%",f"{base_ret:.1f}%",pp_diff(v["avg_percentage"],base_ret,1)],
-                ["좋아요율",f"{v['like_rate']:.2f}%",f"{base_like:.2f}%",pp_diff(v["like_rate"],base_like,2)],
-                ["구독전환율",f"{v['sub_conversion_rate']:.3f}%",f"{base_sub:.3f}%",pp_diff(v["sub_conversion_rate"],base_sub,3)],
-            ]
-            st.dataframe(pd.DataFrame(rows,columns=["지표","이 영상","채널 기준선","차이"]),
-                         hide_index=True,use_container_width=True)
-
-            st.markdown("**실제 성장 흐름**")
-            _series = growth_cache.get(v.get("video_id"), [])
-
-            if growth_error:
-                st.caption("영상별 일별 Analytics를 불러오지 못해 성장 비교는 표시하지 않습니다.")
-            elif not _series:
-                st.caption("아직 일별 Analytics가 충분히 집계되지 않았습니다.")
-            else:
-                _milestone_rows = []
-                for _d in [0, 1, 3, 7, 14, 28]:
-                    _value = _cum_at(v, _d)
-                    if _value is not None:
-                        _milestone_rows.append({
-                            "시점": f"D+{_d}",
-                            "누적 조회수": f"{_value:,}회",
-                        })
-
-                if _milestone_rows:
-                    st.dataframe(
-                        pd.DataFrame(_milestone_rows),
-                        hide_index=True,
-                        use_container_width=True,
-                    )
-
-                if _comp:
-                    if _comp["sample"] >= 5:
-                        _median_diff = (
-                            None if _comp["median"] == 0
-                            else ((_comp["value"] - _comp["median"]) / _comp["median"]) * 100
-                        )
-                        _diff_text = (
-                            "비교 불가"
-                            if _median_diff is None
-                            else f"{_median_diff:+.1f}%"
-                        )
-                        st.write(
-                            f"**D+{_comp['milestone']} 동일 시점:** "
-                            f"{_comp['rank']}위 / {_comp['sample']}개 · "
-                            f"채널 중앙값 {_comp['median']:,.0f}회 · "
-                            f"중앙값 대비 {_diff_text}"
-                        )
-                    else:
-                        st.caption(
-                            f"D+{_comp['milestone']} 비교 가능 영상이 {_comp['sample']}개라 "
-                            "순위 평가는 보류합니다."
-                        )
-
-                _chart_df = pd.DataFrame([
-                    {
-                        "업로드 후": f"D+{x['D']}",
-                        "이 영상 누적 조회수": x["cumulative_views"],
-                    }
-                    for x in _series[:29]
-                ])
-                if not _chart_df.empty:
-                    _chart_df = _chart_df.set_index("업로드 후")
-                    st.line_chart(
-                        _chart_df,
-                        use_container_width=True,
-                        height=220,
-                    )
-                    st.caption(
-                        "※ D+N은 YouTube Analytics의 날짜 단위 데이터 기준입니다. "
-                        "정확한 업로드 후 N×24시간 값과는 다를 수 있습니다."
-                    )
-
-            high=[]; low=[]; similar=[]
-            for name,val,base in [
-                ("조회수",v["views"],base_views),("시청률",v["avg_percentage"],base_ret),
-                ("좋아요율",v["like_rate"],base_like),("구독전환율",v["sub_conversion_rate"],base_sub)]:
-                level = compare_level(val, base, name)
-                if level == "high":
-                    high.append(name)
-                elif level == "low":
-                    low.append(name)
-                else:
-                    similar.append(name)
-
-            st.markdown("**데이터에서 확인되는 점**")
-            parts=[]
-            if high: parts.append("기준선보다 높음: "+", ".join(high))
-            if similar: parts.append("비슷한 수준: "+", ".join(similar))
-            if low: parts.append("기준선보다 낮음: "+", ".join(low))
-            st.write(" · ".join(parts) if parts else "채널 기준선과 비슷한 수준입니다.")
-
-            st.markdown("**다음 테스트**")
-            st.write(
-                "이 영상과 비슷한 소재·길이·전개 중 한 요소를 유지한 영상을 추가로 테스트해 "
-                "같은 성과가 반복되는지 확인해보세요. 현재 수치만으로 원인을 단정하지 않습니다."
-            )
-else:
-    st.info("아직 비교 가능한 영상이 없습니다.")
-
-
-# =========================================================
-# 21. 전체 영상 분석
-# =========================================================
-
-st.subheader(
-    "🔎 전체 영상 분석"
-)
-
-
-def format_video_upload_kst(video):
-    """
-    Excel/표에서 날짜가 #### 또는 이상한 숫자로 보이지 않도록
-    YouTube 원본 업로드 시각을 한국시간 문자열로 고정합니다.
-    """
-    published_raw = video.get("published_raw")
-
-    if published_raw:
-        try:
-            published_dt = datetime.fromisoformat(
-                published_raw.replace("Z", "+00:00")
-            ).astimezone(KST)
-            return published_dt.strftime("%Y-%m-%d %H:%M")
-        except Exception:
-            pass
-
-    published_value = video.get("published", "")
-    if published_value is None:
-        return ""
-
-    return str(published_value)
-
-
-table_data = []
-
-
-for video in videos:
-
-    has_analytics = (
-        video["video_id"]
-        in video_analytics
-    )
-
-    table_data.append({
-
-        "상태":
-            video["status"],
-
-        "제목":
-            video["title"],
-
-        "조회수":
-            video["views"],
-
-        "좋아요":
-            video["likes"],
-
-        "댓글":
-            video["comments"],
-
-        "공유":
-            video["shares"],
-
-        "좋아요율":
-            f"{video['like_rate']:.2f}%",
-
-        "댓글률":
-            f"{video['comment_rate']:.2f}%",
-
-        "구독전환율":
-            f"{video['sub_conversion_rate']:.3f}%",
-
-        "성과점수":
-            (
-                (
-                    video.get("performance_score")
-                    if video.get("performance_score") is not None
-                    else "평가 보류"
-                )
-                if video["status"] == "🟢 공개"
-                else "-"
-            ),
-
-        "성과등급":
-            (
-                video.get("performance_grade", "-")
-                if video["status"] == "🟢 공개"
-                else "-"
-            ),
-
-        "평균 시청":
-            (
-                f"{video['avg_duration']:.1f}초"
-                if has_analytics
-                else "-"
-            ),
-
-        "평균 시청률":
-            (
-                f"{video['avg_percentage']:.1f}%"
-                if has_analytics
-                else "-"
-            ),
-
-        "구독자":
-            (
-                video["net_subs"]
-                if has_analytics
-                else 0
-            ),
-
-        "길이":
-            video["duration"],
-
-        "업로드":
-            format_video_upload_kst(video),
-
-        "예약 공개":
-            video["scheduled"],
-    })
-
-
-df = pd.DataFrame(
-    table_data
-)
-
-
-# =========================================================
-# 22-1. 영상 검색 / 조회수 필터
-# =========================================================
-
-st.caption(
-    "조건을 정한 뒤 검색 버튼을 눌러 결과를 확인하세요. "
-    "검색 전에는 기존 결과가 그대로 유지됩니다."
-)
-
-# 조회수 조건은 바꾸면 입력칸만 바뀌고, 실제 결과는 검색 버튼을 눌러야 적용됩니다.
-filter_mode_input = st.radio(
-    "조회수 조건",
-    ["전체", "이상", "이하", "범위"],
-    horizontal=True,
-    key="views_filter_mode_input",
-)
-
-filter_min_input = 0
-filter_max_input = 0
-filter_views_input = 5000
-
-if filter_mode_input in ["이상", "이하"]:
-    filter_views_input = st.number_input(
-        "기준 조회수",
-        min_value=0,
-        value=5000,
-        step=500,
-        key="views_filter_value_input",
-    )
-elif filter_mode_input == "범위":
-    range_c1, range_c2 = st.columns(2)
-    with range_c1:
-        filter_min_input = st.number_input(
-            "최소 조회수",
-            min_value=0,
-            value=1000,
-            step=500,
-            key="views_filter_min_input",
-        )
-    with range_c2:
-        filter_max_input = st.number_input(
-            "최대 조회수",
-            min_value=0,
-            value=10000,
-            step=500,
-            key="views_filter_max_input",
-        )
-
-filter_c1, filter_c2 = st.columns(2)
-with filter_c1:
-    status_options = ["전체"] + sorted(df["상태"].dropna().astype(str).unique().tolist())
-    filter_status_input = st.selectbox(
-        "공개 상태",
-        status_options,
-        key="video_status_filter_input",
-    )
-with filter_c2:
-    title_query_input = st.text_input(
-        "제목 검색",
-        placeholder="예: 비버, 화산, 교통사고",
-        key="video_title_filter_input",
-    )
-
-sort_option_input = st.selectbox(
-    "정렬",
-    [
-        "조회수 높은 순",
-        "조회수 낮은 순",
-        "최신 업로드 순",
-        "오래된 업로드 순",
-        "평균 시청률 높은 순",
-        "구독 증가 높은 순",
-    ],
-    key="video_sort_input",
-)
-
-if "applied_video_filter" not in st.session_state:
-    st.session_state.applied_video_filter = {
-        "mode": "전체",
-        "views": 5000,
-        "min_views": 1000,
-        "max_views": 10000,
-        "status": "전체",
-        "title": "",
-        "sort": "조회수 높은 순",
-    }
-
-if st.button(
-    "🔍 검색",
-    type="primary",
-    use_container_width=True,
-    key="apply_video_filter_button",
-):
-    st.session_state.applied_video_filter = {
-        "mode": filter_mode_input,
-        "views": int(filter_views_input),
-        "min_views": int(filter_min_input),
-        "max_views": int(filter_max_input),
-        "status": filter_status_input,
-        "title": title_query_input.strip(),
-        "sort": sort_option_input,
-    }
-
-applied_filter = st.session_state.applied_video_filter
-filtered_df = df.copy()
-
-if applied_filter["mode"] == "이상":
-    filtered_df = filtered_df[filtered_df["조회수"] >= applied_filter["views"]]
-elif applied_filter["mode"] == "이하":
-    filtered_df = filtered_df[filtered_df["조회수"] <= applied_filter["views"]]
-elif applied_filter["mode"] == "범위":
-    low = min(applied_filter["min_views"], applied_filter["max_views"])
-    high = max(applied_filter["min_views"], applied_filter["max_views"])
-    filtered_df = filtered_df[
-        (filtered_df["조회수"] >= low) & (filtered_df["조회수"] <= high)
-    ]
-
-if applied_filter["status"] != "전체":
-    filtered_df = filtered_df[filtered_df["상태"] == applied_filter["status"]]
-
-if applied_filter["title"]:
-    filtered_df = filtered_df[
-        filtered_df["제목"].astype(str).str.contains(
-            applied_filter["title"], case=False, na=False
-        )
-    ]
-
-# 검색 결과 정렬
-sort_name = applied_filter["sort"]
-if sort_name == "조회수 높은 순":
-    filtered_df = filtered_df.sort_values("조회수", ascending=False)
-elif sort_name == "조회수 낮은 순":
-    filtered_df = filtered_df.sort_values("조회수", ascending=True)
-elif sort_name == "평균 시청률 높은 순":
-    filtered_df = filtered_df.assign(
-        _sort_pct=pd.to_numeric(
-            filtered_df["평균 시청률"].astype(str).str.replace("%", "", regex=False),
-            errors="coerce",
-        )
-    ).sort_values("_sort_pct", ascending=False).drop(columns=["_sort_pct"])
-elif sort_name == "구독 증가 높은 순":
-    filtered_df = filtered_df.sort_values("구독자", ascending=False)
-elif sort_name in ["최신 업로드 순", "오래된 업로드 순"]:
-    filtered_df = filtered_df.assign(
-        _sort_date=pd.to_datetime(filtered_df["업로드"], errors="coerce")
-    ).sort_values(
-        "_sort_date",
-        ascending=(sort_name == "오래된 업로드 순"),
-    ).drop(columns=["_sort_date"])
-
-result_count = len(filtered_df)
-result_avg_views = int(filtered_df["조회수"].mean()) if result_count else 0
-result_max_views = int(filtered_df["조회수"].max()) if result_count else 0
-
-fc1, fc2, fc3 = st.columns(3)
-fc1.metric("검색 영상", f"{result_count:,}개")
-fc2.metric("평균 조회수", f"{result_avg_views:,}회")
-fc3.metric("최고 조회수", f"{result_max_views:,}회")
-
-st.caption(
-    f"현재 적용: 조회수 {applied_filter['mode']} · "
-    f"상태 {applied_filter['status']} · 정렬 {applied_filter['sort']}"
-)
-
-with st.expander(
-    f"📋 검색 결과 보기 ({result_count:,}개)",
-    expanded=(0 < result_count <= 10),
-):
-    if filtered_df.empty:
-        st.info("조건에 맞는 영상이 없습니다.")
-    else:
-        st.dataframe(
-            filtered_df,
-            use_container_width=True,
-            hide_index=True,
-            height=min(420, 90 + (len(filtered_df) * 34)),
-        )
-
-
-# =========================================================
-# 22-2. 엑셀 다운로드
-# =========================================================
-
-def make_excel_file(primary_df, primary_sheet_name):
-    """
-    전체 영상/검색 결과 엑셀.
-    날짜·길이를 엑셀이 임의의 날짜/시간 형식으로 바꾸지 않도록 문자열로 내보냅니다.
-    """
-    output = BytesIO()
-
-    export_df = primary_df.copy()
-
-    # Excel이 업로드 날짜/영상 길이를 자동 날짜·시간으로 오인하지 않게 문자열 고정
-    for column_name in ["업로드", "예약 공개", "길이"]:
-        if column_name in export_df.columns:
-            export_df[column_name] = export_df[column_name].fillna("").astype(str)
-
-    summary_rows = [
-        ["채널명", channel_info.get("channel_name", channel_info.get("title", ""))],
-        ["구독자", channel_info.get("subscribers", 0)],
-        ["채널 총 조회수", channel_info.get("total_views", channel_info.get("views", 0))],
-        ["전체 감지 영상", len(videos)],
-        ["공개 영상", len(public_videos)],
-        ["예약 영상", len(scheduled_videos)],
-        ["내보낸 영상", len(export_df)],
-        ["생성 시각", datetime.now(KST).strftime("%Y-%m-%d %H:%M:%S KST")],
-    ]
-    summary_df = pd.DataFrame(summary_rows, columns=["항목", "값"])
-
-    with pd.ExcelWriter(output, engine="openpyxl") as writer:
-        export_df.to_excel(writer, sheet_name=primary_sheet_name, index=False)
-        summary_df.to_excel(writer, sheet_name="채널 요약", index=False)
-
-        for sheet_name in writer.book.sheetnames:
-            ws = writer.book[sheet_name]
-            ws.freeze_panes = "A2"
-            ws.auto_filter.ref = ws.dimensions
-
-            for column_cells in ws.columns:
-                max_length = 0
-                column_letter = column_cells[0].column_letter
-
-                for cell in column_cells:
-                    try:
-                        cell_length = len(str(cell.value)) if cell.value is not None else 0
-                        max_length = max(max_length, cell_length)
-                    except Exception:
-                        pass
-
-                ws.column_dimensions[column_letter].width = min(
-                    max(max_length + 3, 11),
-                    48,
-                )
-
-            # 영상 데이터 시트에서 자주 잘리던 열은 최소 폭 보장
-            if sheet_name == primary_sheet_name:
-                header_map = {
-                    cell.value: cell.column_letter
-                    for cell in ws[1]
-                    if cell.value is not None
-                }
-
-                if "업로드" in header_map:
-                    ws.column_dimensions[header_map["업로드"]].width = 21
-
-                if "예약 공개" in header_map:
-                    ws.column_dimensions[header_map["예약 공개"]].width = 21
-
-                if "길이" in header_map:
-                    ws.column_dimensions[header_map["길이"]].width = 12
-
-                if "제목" in header_map:
-                    ws.column_dimensions[header_map["제목"]].width = 42
-
-                # 날짜/시간 열은 '텍스트'로 고정
-                for header in ["업로드", "예약 공개", "길이"]:
-                    if header in header_map:
-                        col = header_map[header]
-                        for row in range(2, ws.max_row + 1):
-                            ws[f"{col}{row}"].number_format = "@"
-
-        for idx, sheet_name in enumerate(writer.book.sheetnames, start=1):
-            add_excel_table(writer.book[sheet_name], f"VideoTable_{idx}")
-
-    output.seek(0)
-    return output.getvalue()
-
-st.markdown("### 📥 엑셀 다운로드")
-download_c1, download_c2 = st.columns(2)
-
-with download_c1:
-    st.download_button(
-        "📥 전체 영상 엑셀",
-        data=make_excel_file(df, "전체 영상"),
-        file_name=f"shorts_all_videos_{today.strftime('%Y%m%d')}.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        use_container_width=True,
-    )
-
-with download_c2:
-    st.download_button(
-        f"📥 검색 결과 엑셀 ({result_count}개)",
-        data=make_excel_file(filtered_df, "검색 결과") if result_count else b"",
-        file_name=f"shorts_filtered_videos_{today.strftime('%Y%m%d')}.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        use_container_width=True,
-        disabled=result_count == 0,
-    )
-
-with st.expander("📋 전체 영상 데이터 보기", expanded=False):
-    st.dataframe(
-        df,
-        use_container_width=True,
-        hide_index=True,
-        height=340,
-    )
-
-
-
-
-# =========================================================
-# 22. 영상 TOP 랭킹
-# =========================================================
-
-with st.expander("🏆 공개 영상 TOP 랭킹 보기", expanded=False):
-    rank_limit = st.radio(
-        "표시 개수",
-        [5, 10, 20],
-        horizontal=True,
-        format_func=lambda n: f"TOP {n}",
-        key="ranking_display_count",
-    )
-
-    rank_tab1, rank_tab2, rank_tab3, rank_tab4 = st.tabs(
-        ["👁️ 조회수", "📊 시청률", "👤 구독전환", "👍 좋아요율"]
-    )
-
-    def render_ranked_videos(ranked, metric_name, metric_formatter):
-        if not ranked:
-            st.info("표시할 공개 영상이 없습니다.")
-            return
-
-        for rank, video in enumerate(ranked[:rank_limit], start=1):
-            col_img, col_info = st.columns([1, 5])
-            with col_img:
-                if video["thumbnail"]:
-                    st.image(video["thumbnail"], width=125)
-            with col_info:
-                st.markdown(f"**{rank}위 · {video['title']}**")
-                score_value = video.get("performance_score")
-
-                if score_value is None:
-                    score_text = "⏳ 데이터 부족"
-                else:
-                    score_text = (
-                        f"🚦 {score_value}점 · "
-                        f"{video.get('performance_grade', '-')}"
-                    )
-
-                st.write(
-                    f"**{metric_name}: {metric_formatter(video)}**  |  "
-                    f"{score_text}"
-                )
-                st.write(
-                    f"👁️ {video['views']:,}회  |  "
-                    f"👍 {video['likes']:,} ({video['like_rate']:.2f}%)  |  "
-                    f"💬 {video['comments']:,} ({video['comment_rate']:.2f}%)  |  "
-                    f"👤 {video['net_subs']:+d} ({video['sub_conversion_rate']:.3f}%)"
-                )
-                if video["video_id"] in video_analytics:
-                    st.write(
-                        f"⏱️ 평균 시청 {video['avg_duration']:.1f}초  |  "
-                        f"📊 평균 시청률 {video['avg_percentage']:.1f}%  |  "
-                        f"🎞️ {video['duration']}"
-                    )
-                st.link_button(
-                    "▶️ YouTube에서 보기",
-                    "https://www.youtube.com/watch?v=" + video["video_id"],
-                    key=f"rank_{metric_name}_{video['video_id']}"
-                )
-            st.divider()
-
-    with rank_tab1:
-        render_ranked_videos(
-            sorted(public_videos, key=lambda x: x["views"], reverse=True),
-            "조회수", lambda v: f"{v['views']:,}회"
-        )
-
-    with rank_tab2:
-        render_ranked_videos(
-            sorted(public_videos, key=lambda x: x["avg_percentage"], reverse=True),
-            "평균 시청률", lambda v: f"{v['avg_percentage']:.1f}%"
-        )
-
-    with rank_tab3:
-        render_ranked_videos(
-            sorted(public_videos, key=lambda x: x["sub_conversion_rate"], reverse=True),
-            "구독전환율", lambda v: f"{v['sub_conversion_rate']:.3f}%"
-        )
-
-    with rank_tab4:
-        render_ranked_videos(
-            sorted(public_videos, key=lambda x: x["like_rate"], reverse=True),
-            "좋아요율", lambda v: f"{v['like_rate']:.2f}%"
-        )
-
-
-
-# =========================================================
-# 23. 예약 영상
-# =========================================================
-
-if scheduled_videos:
+            st.caption("※ 두 기간 모두 업로드가 있을 때만 '조회수 ÷ 업로드 수'를 표시합니다.")
+
+        if trend_daily_rows:
+            trend_df = pd.DataFrame(trend_daily_rows)
+            if not trend_df.empty and "date" in trend_df.columns and "views" in trend_df.columns:
+                trend_df["date"] = pd.to_datetime(trend_df["date"])
+                trend_df = trend_df.set_index("date")
+                st.markdown("#### 일별 조회수 흐름")
+                st.line_chart(trend_df[["views"]], use_container_width=True, height=240)
 
     st.divider()
 
+    if report_videos:
+        base_views = sum(v["views"] for v in report_videos) / len(report_videos)
+        median_views = float(pd.Series([v["views"] for v in report_videos]).median())
+        base_ret = sum(v["avg_percentage"] for v in report_videos) / len(report_videos)
+        base_like = sum(v["like_rate"] for v in report_videos) / len(report_videos)
+        base_sub = sum(v["sub_conversion_rate"] for v in report_videos) / len(report_videos)
+
+        st.markdown("### 📊 내 채널 기준선")
+        b1,b2,b3,b4,b5=st.columns(5)
+        b1.metric("분석 대상 평균 조회수", f"{base_views:,.0f}회")
+        b2.metric("분석 대상 중앙 조회수", f"{median_views:,.0f}회")
+        b3.metric("평균 시청률", f"{base_ret:.1f}%")
+        b4.metric("평균 좋아요율", f"{base_like:.2f}%")
+        b5.metric("평균 구독전환율", f"{base_sub:.3f}%")
+        st.caption("※ 위 기준선은 현재 분석 가능한 내 영상들의 비교값이며 YouTube 공식 기준이 아닙니다.")
+
+        st.markdown("### 🔬 영상별 데이터 비교")
+        st.caption(
+            "한 줄에는 현재 성과만 간단히 표시합니다. 영상을 누르면 기준선 비교와 실제 일별 성장 흐름을 확인할 수 있습니다."
+        )
+
+        # 실제 영상별 일별 Analytics는 한 번만 가져와 아래 모든 성장 비교에서 재사용합니다.
+        try:
+            _report_ids = [v["video_id"] for v in report_videos]
+            _published_dates_pt = []
+            _PT = ZoneInfo("America/Los_Angeles")
+            for _v in report_videos:
+                _raw = _v.get("published_raw")
+                if not _raw:
+                    continue
+                try:
+                    _pdt = datetime.fromisoformat(_raw.replace("Z", "+00:00")).astimezone(_PT)
+                    _published_dates_pt.append(_pdt.date())
+                except Exception:
+                    pass
+
+            _growth_start = min(_published_dates_pt) if _published_dates_pt else today - timedelta(days=90)
+            _growth_end = today - timedelta(days=1)
+
+            daily_video_growth = (
+                get_daily_video_analytics(
+                    yt_analytics,
+                    _report_ids,
+                    _growth_start,
+                    _growth_end,
+                )
+                if _growth_start <= _growth_end
+                else {}
+            )
+            growth_error = None
+        except Exception as _growth_exc:
+            daily_video_growth = {}
+            growth_error = str(_growth_exc)
+
+        def _published_pt_date(video):
+            raw = video.get("published_raw")
+            if not raw:
+                return None
+            try:
+                return datetime.fromisoformat(raw.replace("Z", "+00:00")).astimezone(
+                    ZoneInfo("America/Los_Angeles")
+                ).date()
+            except Exception:
+                return None
+
+        def _growth_series(video):
+            pub_date = _published_pt_date(video)
+            if not pub_date:
+                return []
+
+            rows = daily_video_growth.get(video.get("video_id"), [])
+            by_date = {str(r.get("date")): int(r.get("views", 0)) for r in rows}
+
+            # Analytics 날짜 기준 D0부터 어제까지. 없는 날짜는 0회로 채움.
+            last_day = today - timedelta(days=1)
+            if pub_date > last_day:
+                return []
+
+            out = []
+            cumulative = 0
+            d = pub_date
+            age = 0
+            while d <= last_day:
+                views = by_date.get(d.isoformat(), 0)
+                cumulative += views
+                out.append({
+                    "D": age,
+                    "date": d,
+                    "daily_views": views,
+                    "cumulative_views": cumulative,
+                })
+                d += timedelta(days=1)
+                age += 1
+            return out
+
+        growth_cache = {
+            v["video_id"]: _growth_series(v)
+            for v in report_videos
+        }
+
+        def _cum_at(video, d_index):
+            series = growth_cache.get(video.get("video_id"), [])
+            if len(series) <= d_index:
+                return None
+            return series[d_index]["cumulative_views"]
+
+        def _comparison_for(video):
+            series = growth_cache.get(video.get("video_id"), [])
+            if not series:
+                return None
+
+            max_d = series[-1]["D"]
+            milestone = 3 if max_d >= 3 else (1 if max_d >= 1 else 0)
+            current_value = _cum_at(video, milestone)
+            if current_value is None:
+                return None
+
+            peers = []
+            for other in report_videos:
+                val = _cum_at(other, milestone)
+                if val is not None:
+                    peers.append((other.get("video_id"), val))
+
+            if not peers:
+                return None
+
+            values = [x[1] for x in peers]
+            median = float(pd.Series(values).median())
+            rank = 1 + sum(1 for _, val in peers if val > current_value)
+
+            return {
+                "milestone": milestone,
+                "value": current_value,
+                "median": median,
+                "rank": rank,
+                "sample": len(peers),
+            }
+
+        def _growth_state(video):
+            series = growth_cache.get(video.get("video_id"), [])
+            if len(series) < 4:
+                return "데이터 축적 중"
+
+            daily = [x["daily_views"] for x in series]
+            recent = daily[-2:]
+            previous = daily[-4:-2]
+
+            recent_avg = sum(recent) / len(recent)
+            previous_avg = sum(previous) / len(previous)
+
+            # 오래된 영상이 다시 살아나는 경우
+            if previous_avg > 0 and recent_avg >= previous_avg * 2 and recent_avg >= 100:
+                return "🔥 재상승"
+            if previous_avg == 0:
+                return "↗ 성장 중" if recent_avg > 0 else "→ 정체"
+            ratio = recent_avg / previous_avg
+            if ratio >= 1.25:
+                return "↗ 성장 중"
+            if ratio <= 0.60:
+                return "↘ 둔화"
+            return "→ 유지"
+
+        ordered=sorted(report_videos,key=lambda v:v.get("views",0),reverse=True)
+
+        def pct_diff(value, base):
+            return "비교 불가" if base == 0 else f"{((value-base)/abs(base))*100:+.1f}%"
+
+        def pp_diff(value, base, digits):
+            diff = value - base
+            threshold = {
+                1: 1.0,      # 시청률: ±1.0%p 이내는 비슷
+                2: 0.05,     # 좋아요율: ±0.05%p 이내는 비슷
+                3: 0.005,    # 구독전환율: ±0.005%p 이내는 비슷
+            }.get(digits, 0)
+            if abs(diff) <= threshold:
+                return "≈ 비슷"
+            return f"{diff:+.{digits}f}%p"
+
+        def compare_level(value, base, metric_name):
+            if metric_name == "조회수":
+                if base == 0:
+                    return "similar"
+                diff_ratio = abs(value - base) / abs(base)
+                if diff_ratio <= 0.05:
+                    return "similar"
+            elif metric_name == "시청률":
+                if abs(value - base) <= 1.0:
+                    return "similar"
+            elif metric_name == "좋아요율":
+                if abs(value - base) <= 0.05:
+                    return "similar"
+            elif metric_name == "구독전환율":
+                if abs(value - base) <= 0.005:
+                    return "similar"
+
+            return "high" if value > base else "low"
+
+        for rank,v in enumerate(ordered,start=1):
+            published_text = "업로드일 확인 불가"
+            age_text = ""
+            raw = v.get("published_raw")
+            if raw:
+                try:
+                    published_dt = datetime.fromisoformat(raw.replace("Z", "+00:00")).astimezone(KST)
+                    published_date = published_dt.date()
+                    age_days = max((today - published_date).days, 0)
+                    published_text = published_date.strftime("%Y.%m.%d")
+                    age_text = f" · 업로드 후 {age_days}일"
+                except Exception:
+                    pass
+
+            _comp = _comparison_for(v)
+            _state = _growth_state(v)
+
+            if _comp and _comp["sample"] >= 5:
+                _same_age_text = (
+                    f"D+{_comp['milestone']} {_comp['rank']}위/{_comp['sample']}개"
+                )
+            elif _comp:
+                _same_age_text = f"비교 데이터 부족({_comp['sample']}개)"
+            else:
+                _same_age_text = "성장 데이터 집계 중"
+
+            summary = (
+                f"📅 {published_text}{age_text} | "
+                f"조회수 {v['views']:,} | {_same_age_text} | {_state}"
+            )
+
+            with st.expander(f"{rank}. {v['title']}  |  {summary}"):
+                rows=[
+                    ["조회수",f"{v['views']:,}회",f"{base_views:,.0f}회",pct_diff(v["views"],base_views)],
+                    ["평균 시청률",f"{v['avg_percentage']:.1f}%",f"{base_ret:.1f}%",pp_diff(v["avg_percentage"],base_ret,1)],
+                    ["좋아요율",f"{v['like_rate']:.2f}%",f"{base_like:.2f}%",pp_diff(v["like_rate"],base_like,2)],
+                    ["구독전환율",f"{v['sub_conversion_rate']:.3f}%",f"{base_sub:.3f}%",pp_diff(v["sub_conversion_rate"],base_sub,3)],
+                ]
+                st.dataframe(pd.DataFrame(rows,columns=["지표","이 영상","채널 기준선","차이"]),
+                             hide_index=True,use_container_width=True)
+
+                st.markdown("**실제 성장 흐름**")
+                _series = growth_cache.get(v.get("video_id"), [])
+
+                if growth_error:
+                    st.caption("영상별 일별 Analytics를 불러오지 못해 성장 비교는 표시하지 않습니다.")
+                elif not _series:
+                    st.caption("아직 일별 Analytics가 충분히 집계되지 않았습니다.")
+                else:
+                    _milestone_rows = []
+                    for _d in [0, 1, 3, 7, 14, 28]:
+                        _value = _cum_at(v, _d)
+                        if _value is not None:
+                            _milestone_rows.append({
+                                "시점": f"D+{_d}",
+                                "누적 조회수": f"{_value:,}회",
+                            })
+
+                    if _milestone_rows:
+                        st.dataframe(
+                            pd.DataFrame(_milestone_rows),
+                            hide_index=True,
+                            use_container_width=True,
+                        )
+
+                    if _comp:
+                        if _comp["sample"] >= 5:
+                            _median_diff = (
+                                None if _comp["median"] == 0
+                                else ((_comp["value"] - _comp["median"]) / _comp["median"]) * 100
+                            )
+                            _diff_text = (
+                                "비교 불가"
+                                if _median_diff is None
+                                else f"{_median_diff:+.1f}%"
+                            )
+                            st.write(
+                                f"**D+{_comp['milestone']} 동일 시점:** "
+                                f"{_comp['rank']}위 / {_comp['sample']}개 · "
+                                f"채널 중앙값 {_comp['median']:,.0f}회 · "
+                                f"중앙값 대비 {_diff_text}"
+                            )
+                        else:
+                            st.caption(
+                                f"D+{_comp['milestone']} 비교 가능 영상이 {_comp['sample']}개라 "
+                                "순위 평가는 보류합니다."
+                            )
+
+                    _chart_df = pd.DataFrame([
+                        {
+                            "업로드 후": f"D+{x['D']}",
+                            "이 영상 누적 조회수": x["cumulative_views"],
+                        }
+                        for x in _series[:29]
+                    ])
+                    if not _chart_df.empty:
+                        _chart_df = _chart_df.set_index("업로드 후")
+                        st.line_chart(
+                            _chart_df,
+                            use_container_width=True,
+                            height=220,
+                        )
+                        st.caption(
+                            "※ D+N은 YouTube Analytics의 날짜 단위 데이터 기준입니다. "
+                            "정확한 업로드 후 N×24시간 값과는 다를 수 있습니다."
+                        )
+
+                high=[]; low=[]; similar=[]
+                for name,val,base in [
+                    ("조회수",v["views"],base_views),("시청률",v["avg_percentage"],base_ret),
+                    ("좋아요율",v["like_rate"],base_like),("구독전환율",v["sub_conversion_rate"],base_sub)]:
+                    level = compare_level(val, base, name)
+                    if level == "high":
+                        high.append(name)
+                    elif level == "low":
+                        low.append(name)
+                    else:
+                        similar.append(name)
+
+                st.markdown("**데이터에서 확인되는 점**")
+                parts=[]
+                if high: parts.append("기준선보다 높음: "+", ".join(high))
+                if similar: parts.append("비슷한 수준: "+", ".join(similar))
+                if low: parts.append("기준선보다 낮음: "+", ".join(low))
+                st.write(" · ".join(parts) if parts else "채널 기준선과 비슷한 수준입니다.")
+
+                st.markdown("**다음 테스트**")
+                st.write(
+                    "이 영상과 비슷한 소재·길이·전개 중 한 요소를 유지한 영상을 추가로 테스트해 "
+                    "같은 성과가 반복되는지 확인해보세요. 현재 수치만으로 원인을 단정하지 않습니다."
+                )
+    else:
+        st.info("아직 비교 가능한 영상이 없습니다.")
+
+elif page == "📊 채널 분석":
+    st.header("📊 채널 분석")
+    st.info("🚧 이 화면은 V6.6에서 채워집니다.")
+    st.write("여기에는 최근 10/20/50개 영상 성과, 업로드 요일·시간, 소재별 성과 분석이 들어갈 예정입니다.")
+    st.caption("지금은 자리만 먼저 만들어 두어 앞으로 기능이 늘어나도 화면이 다시 길어지지 않게 했습니다.")
+
+elif page == "🔎 영상":
+    # =========================================================
+    # 21. 전체 영상 분석
+    # =========================================================
+
     st.subheader(
-        "🟡 예약 영상"
+        "🔎 전체 영상 분석"
     )
 
 
-    for video in scheduled_videos:
+    def format_video_upload_kst(video):
+        """
+        Excel/표에서 날짜가 #### 또는 이상한 숫자로 보이지 않도록
+        YouTube 원본 업로드 시각을 한국시간 문자열로 고정합니다.
+        """
+        published_raw = video.get("published_raw")
 
-        col_img, col_info = (
-            st.columns(
-                [1, 5]
+        if published_raw:
+            try:
+                published_dt = datetime.fromisoformat(
+                    published_raw.replace("Z", "+00:00")
+                ).astimezone(KST)
+                return published_dt.strftime("%Y-%m-%d %H:%M")
+            except Exception:
+                pass
+
+        published_value = video.get("published", "")
+        if published_value is None:
+            return ""
+
+        return str(published_value)
+
+
+    table_data = []
+
+
+    for video in videos:
+
+        has_analytics = (
+            video["video_id"]
+            in video_analytics
+        )
+
+        table_data.append({
+
+            "상태":
+                video["status"],
+
+            "제목":
+                video["title"],
+
+            "조회수":
+                video["views"],
+
+            "좋아요":
+                video["likes"],
+
+            "댓글":
+                video["comments"],
+
+            "공유":
+                video["shares"],
+
+            "좋아요율":
+                f"{video['like_rate']:.2f}%",
+
+            "댓글률":
+                f"{video['comment_rate']:.2f}%",
+
+            "구독전환율":
+                f"{video['sub_conversion_rate']:.3f}%",
+
+            "성과점수":
+                (
+                    (
+                        video.get("performance_score")
+                        if video.get("performance_score") is not None
+                        else "평가 보류"
+                    )
+                    if video["status"] == "🟢 공개"
+                    else "-"
+                ),
+
+            "성과등급":
+                (
+                    video.get("performance_grade", "-")
+                    if video["status"] == "🟢 공개"
+                    else "-"
+                ),
+
+            "평균 시청":
+                (
+                    f"{video['avg_duration']:.1f}초"
+                    if has_analytics
+                    else "-"
+                ),
+
+            "평균 시청률":
+                (
+                    f"{video['avg_percentage']:.1f}%"
+                    if has_analytics
+                    else "-"
+                ),
+
+            "구독자":
+                (
+                    video["net_subs"]
+                    if has_analytics
+                    else 0
+                ),
+
+            "길이":
+                video["duration"],
+
+            "업로드":
+                format_video_upload_kst(video),
+
+            "예약 공개":
+                video["scheduled"],
+        })
+
+
+    df = pd.DataFrame(
+        table_data
+    )
+
+
+    # =========================================================
+    # 22-1. 영상 검색 / 조회수 필터
+    # =========================================================
+
+    st.caption(
+        "조건을 정한 뒤 검색 버튼을 눌러 결과를 확인하세요. "
+        "검색 전에는 기존 결과가 그대로 유지됩니다."
+    )
+
+    # 조회수 조건은 바꾸면 입력칸만 바뀌고, 실제 결과는 검색 버튼을 눌러야 적용됩니다.
+    filter_mode_input = st.radio(
+        "조회수 조건",
+        ["전체", "이상", "이하", "범위"],
+        horizontal=True,
+        key="views_filter_mode_input",
+    )
+
+    filter_min_input = 0
+    filter_max_input = 0
+    filter_views_input = 5000
+
+    if filter_mode_input in ["이상", "이하"]:
+        filter_views_input = st.number_input(
+            "기준 조회수",
+            min_value=0,
+            value=5000,
+            step=500,
+            key="views_filter_value_input",
+        )
+    elif filter_mode_input == "범위":
+        range_c1, range_c2 = st.columns(2)
+        with range_c1:
+            filter_min_input = st.number_input(
+                "최소 조회수",
+                min_value=0,
+                value=1000,
+                step=500,
+                key="views_filter_min_input",
             )
+        with range_c2:
+            filter_max_input = st.number_input(
+                "최대 조회수",
+                min_value=0,
+                value=10000,
+                step=500,
+                key="views_filter_max_input",
+            )
+
+    filter_c1, filter_c2 = st.columns(2)
+    with filter_c1:
+        status_options = ["전체"] + sorted(df["상태"].dropna().astype(str).unique().tolist())
+        filter_status_input = st.selectbox(
+            "공개 상태",
+            status_options,
+            key="video_status_filter_input",
+        )
+    with filter_c2:
+        title_query_input = st.text_input(
+            "제목 검색",
+            placeholder="예: 비버, 화산, 교통사고",
+            key="video_title_filter_input",
+        )
+
+    sort_option_input = st.selectbox(
+        "정렬",
+        [
+            "조회수 높은 순",
+            "조회수 낮은 순",
+            "최신 업로드 순",
+            "오래된 업로드 순",
+            "평균 시청률 높은 순",
+            "구독 증가 높은 순",
+        ],
+        key="video_sort_input",
+    )
+
+    if "applied_video_filter" not in st.session_state:
+        st.session_state.applied_video_filter = {
+            "mode": "전체",
+            "views": 5000,
+            "min_views": 1000,
+            "max_views": 10000,
+            "status": "전체",
+            "title": "",
+            "sort": "조회수 높은 순",
+        }
+
+    if st.button(
+        "🔍 검색",
+        type="primary",
+        use_container_width=True,
+        key="apply_video_filter_button",
+    ):
+        st.session_state.applied_video_filter = {
+            "mode": filter_mode_input,
+            "views": int(filter_views_input),
+            "min_views": int(filter_min_input),
+            "max_views": int(filter_max_input),
+            "status": filter_status_input,
+            "title": title_query_input.strip(),
+            "sort": sort_option_input,
+        }
+
+    applied_filter = st.session_state.applied_video_filter
+    filtered_df = df.copy()
+
+    if applied_filter["mode"] == "이상":
+        filtered_df = filtered_df[filtered_df["조회수"] >= applied_filter["views"]]
+    elif applied_filter["mode"] == "이하":
+        filtered_df = filtered_df[filtered_df["조회수"] <= applied_filter["views"]]
+    elif applied_filter["mode"] == "범위":
+        low = min(applied_filter["min_views"], applied_filter["max_views"])
+        high = max(applied_filter["min_views"], applied_filter["max_views"])
+        filtered_df = filtered_df[
+            (filtered_df["조회수"] >= low) & (filtered_df["조회수"] <= high)
+        ]
+
+    if applied_filter["status"] != "전체":
+        filtered_df = filtered_df[filtered_df["상태"] == applied_filter["status"]]
+
+    if applied_filter["title"]:
+        filtered_df = filtered_df[
+            filtered_df["제목"].astype(str).str.contains(
+                applied_filter["title"], case=False, na=False
+            )
+        ]
+
+    # 검색 결과 정렬
+    sort_name = applied_filter["sort"]
+    if sort_name == "조회수 높은 순":
+        filtered_df = filtered_df.sort_values("조회수", ascending=False)
+    elif sort_name == "조회수 낮은 순":
+        filtered_df = filtered_df.sort_values("조회수", ascending=True)
+    elif sort_name == "평균 시청률 높은 순":
+        filtered_df = filtered_df.assign(
+            _sort_pct=pd.to_numeric(
+                filtered_df["평균 시청률"].astype(str).str.replace("%", "", regex=False),
+                errors="coerce",
+            )
+        ).sort_values("_sort_pct", ascending=False).drop(columns=["_sort_pct"])
+    elif sort_name == "구독 증가 높은 순":
+        filtered_df = filtered_df.sort_values("구독자", ascending=False)
+    elif sort_name in ["최신 업로드 순", "오래된 업로드 순"]:
+        filtered_df = filtered_df.assign(
+            _sort_date=pd.to_datetime(filtered_df["업로드"], errors="coerce")
+        ).sort_values(
+            "_sort_date",
+            ascending=(sort_name == "오래된 업로드 순"),
+        ).drop(columns=["_sort_date"])
+
+    result_count = len(filtered_df)
+    result_avg_views = int(filtered_df["조회수"].mean()) if result_count else 0
+    result_max_views = int(filtered_df["조회수"].max()) if result_count else 0
+
+    fc1, fc2, fc3 = st.columns(3)
+    fc1.metric("검색 영상", f"{result_count:,}개")
+    fc2.metric("평균 조회수", f"{result_avg_views:,}회")
+    fc3.metric("최고 조회수", f"{result_max_views:,}회")
+
+    st.caption(
+        f"현재 적용: 조회수 {applied_filter['mode']} · "
+        f"상태 {applied_filter['status']} · 정렬 {applied_filter['sort']}"
+    )
+
+    with st.expander(
+        f"📋 검색 결과 보기 ({result_count:,}개)",
+        expanded=(0 < result_count <= 10),
+    ):
+        if filtered_df.empty:
+            st.info("조건에 맞는 영상이 없습니다.")
+        else:
+            st.dataframe(
+                filtered_df,
+                use_container_width=True,
+                hide_index=True,
+                height=min(420, 90 + (len(filtered_df) * 34)),
+            )
+
+
+    # =========================================================
+    # 22-2. 엑셀 다운로드
+    # =========================================================
+
+    def make_excel_file(primary_df, primary_sheet_name):
+        """
+        전체 영상/검색 결과 엑셀.
+        날짜·길이를 엑셀이 임의의 날짜/시간 형식으로 바꾸지 않도록 문자열로 내보냅니다.
+        """
+        output = BytesIO()
+
+        export_df = primary_df.copy()
+
+        # Excel이 업로드 날짜/영상 길이를 자동 날짜·시간으로 오인하지 않게 문자열 고정
+        for column_name in ["업로드", "예약 공개", "길이"]:
+            if column_name in export_df.columns:
+                export_df[column_name] = export_df[column_name].fillna("").astype(str)
+
+        summary_rows = [
+            ["채널명", channel_info.get("channel_name", channel_info.get("title", ""))],
+            ["구독자", channel_info.get("subscribers", 0)],
+            ["채널 총 조회수", channel_info.get("total_views", channel_info.get("views", 0))],
+            ["전체 감지 영상", len(videos)],
+            ["공개 영상", len(public_videos)],
+            ["예약 영상", len(scheduled_videos)],
+            ["내보낸 영상", len(export_df)],
+            ["생성 시각", datetime.now(KST).strftime("%Y-%m-%d %H:%M:%S KST")],
+        ]
+        summary_df = pd.DataFrame(summary_rows, columns=["항목", "값"])
+
+        with pd.ExcelWriter(output, engine="openpyxl") as writer:
+            export_df.to_excel(writer, sheet_name=primary_sheet_name, index=False)
+            summary_df.to_excel(writer, sheet_name="채널 요약", index=False)
+
+            for sheet_name in writer.book.sheetnames:
+                ws = writer.book[sheet_name]
+                ws.freeze_panes = "A2"
+                ws.auto_filter.ref = ws.dimensions
+
+                for column_cells in ws.columns:
+                    max_length = 0
+                    column_letter = column_cells[0].column_letter
+
+                    for cell in column_cells:
+                        try:
+                            cell_length = len(str(cell.value)) if cell.value is not None else 0
+                            max_length = max(max_length, cell_length)
+                        except Exception:
+                            pass
+
+                    ws.column_dimensions[column_letter].width = min(
+                        max(max_length + 3, 11),
+                        48,
+                    )
+
+                # 영상 데이터 시트에서 자주 잘리던 열은 최소 폭 보장
+                if sheet_name == primary_sheet_name:
+                    header_map = {
+                        cell.value: cell.column_letter
+                        for cell in ws[1]
+                        if cell.value is not None
+                    }
+
+                    if "업로드" in header_map:
+                        ws.column_dimensions[header_map["업로드"]].width = 21
+
+                    if "예약 공개" in header_map:
+                        ws.column_dimensions[header_map["예약 공개"]].width = 21
+
+                    if "길이" in header_map:
+                        ws.column_dimensions[header_map["길이"]].width = 12
+
+                    if "제목" in header_map:
+                        ws.column_dimensions[header_map["제목"]].width = 42
+
+                    # 날짜/시간 열은 '텍스트'로 고정
+                    for header in ["업로드", "예약 공개", "길이"]:
+                        if header in header_map:
+                            col = header_map[header]
+                            for row in range(2, ws.max_row + 1):
+                                ws[f"{col}{row}"].number_format = "@"
+
+            for idx, sheet_name in enumerate(writer.book.sheetnames, start=1):
+                add_excel_table(writer.book[sheet_name], f"VideoTable_{idx}")
+
+        output.seek(0)
+        return output.getvalue()
+
+    st.markdown("### 📥 엑셀 다운로드")
+    download_c1, download_c2 = st.columns(2)
+
+    with download_c1:
+        st.download_button(
+            "📥 전체 영상 엑셀",
+            data=make_excel_file(df, "전체 영상"),
+            file_name=f"shorts_all_videos_{today.strftime('%Y%m%d')}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True,
+        )
+
+    with download_c2:
+        st.download_button(
+            f"📥 검색 결과 엑셀 ({result_count}개)",
+            data=make_excel_file(filtered_df, "검색 결과") if result_count else b"",
+            file_name=f"shorts_filtered_videos_{today.strftime('%Y%m%d')}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True,
+            disabled=result_count == 0,
+        )
+
+    with st.expander("📋 전체 영상 데이터 보기", expanded=False):
+        st.dataframe(
+            df,
+            use_container_width=True,
+            hide_index=True,
+            height=340,
         )
 
 
-        with col_img:
 
-            if video[
-                "thumbnail"
-            ]:
 
-                st.image(
-                    video[
-                        "thumbnail"
-                    ],
-                    width=140
+    # =========================================================
+    # 22. 영상 TOP 랭킹
+    # =========================================================
+
+    with st.expander("🏆 공개 영상 TOP 랭킹 보기", expanded=False):
+        rank_limit = st.radio(
+            "표시 개수",
+            [5, 10, 20],
+            horizontal=True,
+            format_func=lambda n: f"TOP {n}",
+            key="ranking_display_count",
+        )
+
+        rank_tab1, rank_tab2, rank_tab3, rank_tab4 = st.tabs(
+            ["👁️ 조회수", "📊 시청률", "👤 구독전환", "👍 좋아요율"]
+        )
+
+        def render_ranked_videos(ranked, metric_name, metric_formatter):
+            if not ranked:
+                st.info("표시할 공개 영상이 없습니다.")
+                return
+
+            for rank, video in enumerate(ranked[:rank_limit], start=1):
+                col_img, col_info = st.columns([1, 5])
+                with col_img:
+                    if video["thumbnail"]:
+                        st.image(video["thumbnail"], width=125)
+                with col_info:
+                    st.markdown(f"**{rank}위 · {video['title']}**")
+                    score_value = video.get("performance_score")
+
+                    if score_value is None:
+                        score_text = "⏳ 데이터 부족"
+                    else:
+                        score_text = (
+                            f"🚦 {score_value}점 · "
+                            f"{video.get('performance_grade', '-')}"
+                        )
+
+                    st.write(
+                        f"**{metric_name}: {metric_formatter(video)}**  |  "
+                        f"{score_text}"
+                    )
+                    st.write(
+                        f"👁️ {video['views']:,}회  |  "
+                        f"👍 {video['likes']:,} ({video['like_rate']:.2f}%)  |  "
+                        f"💬 {video['comments']:,} ({video['comment_rate']:.2f}%)  |  "
+                        f"👤 {video['net_subs']:+d} ({video['sub_conversion_rate']:.3f}%)"
+                    )
+                    if video["video_id"] in video_analytics:
+                        st.write(
+                            f"⏱️ 평균 시청 {video['avg_duration']:.1f}초  |  "
+                            f"📊 평균 시청률 {video['avg_percentage']:.1f}%  |  "
+                            f"🎞️ {video['duration']}"
+                        )
+                    st.link_button(
+                        "▶️ YouTube에서 보기",
+                        "https://www.youtube.com/watch?v=" + video["video_id"],
+                        key=f"rank_{metric_name}_{video['video_id']}"
+                    )
+                st.divider()
+
+        with rank_tab1:
+            render_ranked_videos(
+                sorted(public_videos, key=lambda x: x["views"], reverse=True),
+                "조회수", lambda v: f"{v['views']:,}회"
+            )
+
+        with rank_tab2:
+            render_ranked_videos(
+                sorted(public_videos, key=lambda x: x["avg_percentage"], reverse=True),
+                "평균 시청률", lambda v: f"{v['avg_percentage']:.1f}%"
+            )
+
+        with rank_tab3:
+            render_ranked_videos(
+                sorted(public_videos, key=lambda x: x["sub_conversion_rate"], reverse=True),
+                "구독전환율", lambda v: f"{v['sub_conversion_rate']:.3f}%"
+            )
+
+        with rank_tab4:
+            render_ranked_videos(
+                sorted(public_videos, key=lambda x: x["like_rate"], reverse=True),
+                "좋아요율", lambda v: f"{v['like_rate']:.2f}%"
+            )
+
+
+
+    # =========================================================
+    # 23. 예약 영상
+    # =========================================================
+
+    if scheduled_videos:
+
+        st.divider()
+
+        st.subheader(
+            "🟡 예약 영상"
+        )
+
+
+        for video in scheduled_videos:
+
+            col_img, col_info = (
+                st.columns(
+                    [1, 5]
+                )
+            )
+
+
+            with col_img:
+
+                if video[
+                    "thumbnail"
+                ]:
+
+                    st.image(
+                        video[
+                            "thumbnail"
+                        ],
+                        width=140
+                    )
+
+
+            with col_info:
+
+                st.markdown(
+                    f"**{video['title']}**"
+                )
+
+                st.write(
+                    f"공개 예정: "
+                    f"{video['scheduled']}"
+                )
+
+                st.write(
+                    f"영상 길이: "
+                    f"{video['duration']}"
                 )
 
 
-        with col_info:
+    # =========================================================
+    # 24. 연결 해제
+    # =========================================================
 
-            st.markdown(
-                f"**{video['title']}**"
-            )
-
-            st.write(
-                f"공개 예정: "
-                f"{video['scheduled']}"
-            )
-
-            st.write(
-                f"영상 길이: "
-                f"{video['duration']}"
-            )
+    st.divider()
 
 
-# =========================================================
-# 24. 연결 해제
-# =========================================================
+    if st.button(
+        "🔓 YouTube 연결 해제"
+    ):
 
-st.divider()
+        st.session_state.clear()
 
+        st.query_params.clear()
 
-if st.button(
-    "🔓 YouTube 연결 해제"
-):
-
-    st.session_state.clear()
-
-    st.query_params.clear()
-
-    st.rerun()
+        st.rerun()
