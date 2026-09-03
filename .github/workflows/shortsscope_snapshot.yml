@@ -3,7 +3,7 @@ name: Shorts Scope Snapshot
 on:
   workflow_dispatch:
   schedule:
-    - cron: "17,47 * * * *"
+    - cron: "7,37 * * * *"
 
 jobs:
   collect:
