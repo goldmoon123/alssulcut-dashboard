@@ -1449,7 +1449,9 @@ for week in calendar.monthcalendar(calendar_month.year, calendar_month.month):
             continue
 
         current_day = date(calendar_month.year, calendar_month.month, day_number)
-        day_data = month_lookup.get(current_day.strftime("%Y-%m-%d"), {})
+        day_key = current_day.strftime("%Y-%m-%d")
+        has_analytics_row = day_key in month_lookup
+        day_data = month_lookup.get(day_key, {})
         views = int(day_data.get("views", 0))
         net_subscribers = int(day_data.get("net_subscribers", 0))
 
@@ -1472,8 +1474,11 @@ for week in calendar.monthcalendar(calendar_month.year, calendar_month.month):
         subscriber_text = f"\n👤 {net_subscribers:+d}" if net_subscribers != 0 else ""
         upload_mark = " 🎬" if current_day in upload_dates else ""
 
-        # 성과가 없는 날은 최대한 단순하게 표시
-        if views == 0 and net_subscribers == 0:
+        # 최근 2일은 Analytics 행 자체가 없으면 0으로 단정하지 않음
+        is_recent_calendar_day = 0 <= (today - current_day).days <= 2
+        if is_recent_calendar_day and not has_analytics_row:
+            label = f"{day_number}일{upload_mark}\n\n⏳ 집계 중"
+        elif views == 0 and net_subscribers == 0:
             label = f"{day_number}일{upload_mark}"
         else:
             label = f"{day_number}일{upload_mark}\n\n👁 {view_text}{subscriber_text}"
@@ -1686,7 +1691,7 @@ if day_summary:
         f"{old_video_share:.1f}% 기여",
     )
 
-    if is_today_detail and day_total_views == 0:
+    if is_recent_detail and day_total_views == 0:
         st.info(
             "📌 현재 0회는 '확정 0회'가 아니라 Analytics 일별 집계 대기일 가능성이 있습니다. "
             "오늘 업로드 영상의 실제 누적 조회수는 아래 '그날 업로드한 영상'의 현재 조회수를 확인하세요."
@@ -1910,7 +1915,7 @@ if public_videos:
     )
 
     c4.metric(
-        "영상 순구독자",
+        "공개 영상 순구독자 합계",
         f"{total_net_subscribers:+,}명"
     )
 
@@ -1919,467 +1924,83 @@ st.divider()
 
 
 # =========================================================
-# 20. 자동 성과진단 V4
+# 20. 자동 성과 리포트 V6
 # =========================================================
 
-st.header("🧠 자동 성과진단 V5")
+st.header("🧠 자동 성과 리포트 V6")
 st.caption(
-    "복잡한 점수보다 '지금 뭘 봐야 하는지'를 먼저 보여줍니다. "
-    "조회수 100회 이상이고 Analytics가 집계된 공개 영상만 비교하며, "
-    "원인을 단정하지 않고 현재 데이터에서 보이는 강점·약점을 기준으로 진단합니다."
+    "원인을 추측하지 않고 실제 데이터와 내 채널 기준선만 비교합니다. "
+    "조회수 100회 이상 + 영상별 Analytics가 집계된 공개 영상만 분석합니다."
 )
 
-# 채널 추세: 사용자가 기간을 고르고, 직전 동일 기간과 실제 수치로 비교
-st.markdown("### 📈 채널 추세")
-trend_option = st.selectbox(
-    "분석 기간",
-    ["최근 7일", "최근 14일", "최근 28일", "직접 선택"],
-    key="trend_period_option",
+report_videos = [
+    v for v in public_videos
+    if v.get("views", 0) >= 100 and v.get("video_id") in video_analytics
+]
+st.caption(
+    f"분석 대상: 공개 영상 {len(public_videos)}개 중 {len(report_videos)}개 · "
+    f"마지막 조회: {datetime.now(KST).strftime('%Y-%m-%d %H:%M KST')}"
 )
 
-trend_last_day = today - timedelta(days=1)  # 오늘은 Analytics 집계 지연 때문에 제외
+if report_videos:
+    base_views = sum(v["views"] for v in report_videos) / len(report_videos)
+    median_views = float(pd.Series([v["views"] for v in report_videos]).median())
+    base_ret = sum(v["avg_percentage"] for v in report_videos) / len(report_videos)
+    base_like = sum(v["like_rate"] for v in report_videos) / len(report_videos)
+    base_sub = sum(v["sub_conversion_rate"] for v in report_videos) / len(report_videos)
 
-if trend_option == "최근 7일":
-    trend_end = trend_last_day
-    trend_start = trend_end - timedelta(days=6)
-elif trend_option == "최근 14일":
-    trend_end = trend_last_day
-    trend_start = trend_end - timedelta(days=13)
-elif trend_option == "최근 28일":
-    trend_end = trend_last_day
-    trend_start = trend_end - timedelta(days=27)
-else:
-    td1, td2 = st.columns(2)
-    with td1:
-        trend_start = st.date_input(
-            "시작일",
-            value=trend_last_day - timedelta(days=6),
-            max_value=trend_last_day,
-            key="trend_custom_start",
-        )
-    with td2:
-        trend_end = st.date_input(
-            "종료일",
-            value=trend_last_day,
-            max_value=trend_last_day,
-            key="trend_custom_end",
-        )
-
-if trend_start > trend_end:
-    st.warning("채널 추세의 시작일이 종료일보다 늦습니다.")
-    trend_start = trend_end
-
-trend_days = (trend_end - trend_start).days + 1
-prev7_end = trend_start - timedelta(days=1)
-prev7_start = prev7_end - timedelta(days=trend_days - 1)
-recent7 = None
-prev7 = None
-recent_trend_text = None
-recent_trend_state = "⚪ 확인 중"
-
-def _upload_count_between(start_d, end_d):
-    count = 0
-    for _video in public_videos:
-        _raw = _video.get("published_raw")
-        if not _raw:
-            continue
-        try:
-            _d = datetime.fromisoformat(_raw.replace("Z", "+00:00")).astimezone(KST).date()
-            if start_d <= _d <= end_d:
-                count += 1
-        except Exception:
-            pass
-    return count
-
-def _change_text(current, previous, suffix="%"):
-    change = calculate_change(current, previous)
-    if change is None:
-        return "비교 불가"
-    arrow = "▲" if change > 0 else ("▼" if change < 0 else "→")
-    return f"{arrow} {change:+.1f}{suffix}"
-
-try:
-    recent7 = get_period_summary(yt_analytics, trend_start, trend_end)
-    prev7 = get_period_summary(yt_analytics, prev7_start, prev7_end)
-
-    recent_uploads = _upload_count_between(trend_start, trend_end)
-    previous_uploads = _upload_count_between(prev7_start, prev7_end)
-    view_change = calculate_change(recent7["views"], prev7["views"])
-
-    if recent7["views"] == 0:
-        recent_trend_state = "⚪ 집계 대기"
-    elif view_change is None:
-        recent_trend_state = "📈 비교기간 데이터 부족"
-    elif view_change > 0:
-        recent_trend_state = "📈 증가"
-    elif view_change < 0:
-        recent_trend_state = "📉 감소"
-    else:
-        recent_trend_state = "➡️ 동일"
-
-    st.caption(
-        f"현재 {trend_start:%Y.%m.%d} ~ {trend_end:%Y.%m.%d}  ↔  "
-        f"이전 {prev7_start:%Y.%m.%d} ~ {prev7_end:%Y.%m.%d} · 오늘 데이터 제외"
-    )
-
-    trend_rows = pd.DataFrame([
-        {"지표": "조회수", "현재 기간": f"{recent7['views']:,}회", "이전 기간": f"{prev7['views']:,}회", "변화": _change_text(recent7['views'], prev7['views'])},
-        {"지표": "시청시간", "현재 기간": format_watch_time(recent7['watch_minutes']), "이전 기간": format_watch_time(prev7['watch_minutes']), "변화": _change_text(recent7['watch_minutes'], prev7['watch_minutes'])},
-        {"지표": "순구독자", "현재 기간": f"{recent7['net_subscribers']:+,}명", "이전 기간": f"{prev7['net_subscribers']:+,}명", "변화": f"{recent7['net_subscribers'] - prev7['net_subscribers']:+,}명"},
-        {"지표": "업로드", "현재 기간": f"{recent_uploads}개", "이전 기간": f"{previous_uploads}개", "변화": f"{recent_uploads - previous_uploads:+,}개"},
-    ])
-    st.dataframe(trend_rows, hide_index=True, use_container_width=True)
-
-    tc1, tc2 = st.columns(2)
-    with tc1:
-        st.metric("조회수 기준 추세", recent_trend_state)
-    with tc2:
-        if recent_uploads > 0 and previous_uploads > 0:
-            recent_per_upload = recent7["views"] / recent_uploads
-            prev_per_upload = prev7["views"] / previous_uploads
-            st.metric(
-                "조회수 ÷ 업로드 수 (참고)",
-                f"{recent_per_upload:,.0f}회/개",
-                _change_text(recent_per_upload, prev_per_upload),
-            )
-        else:
-            st.metric("조회수 ÷ 업로드 수 (참고)", "계산 불가")
-
-    st.caption(
-        "※ '조회수 ÷ 업로드 수'는 기간 전체 채널 조회수를 업로드 수로 나눈 참고값입니다. "
-        "기존 영상 조회수도 포함되므로 새 영상 1개의 실제 평균 성과를 뜻하지 않습니다."
-    )
-
-    try:
-        trend_daily = get_daily_channel_data(yt_analytics, trend_start, trend_end)
-        if trend_daily:
-            trend_df = pd.DataFrame(trend_daily)
-            trend_df["date"] = pd.to_datetime(trend_df["date"])
-            trend_df = trend_df.set_index("date")
-            st.markdown("#### 일별 조회수 흐름")
-            st.line_chart(trend_df[["views"]], use_container_width=True, height=240)
-    except Exception:
-        pass
-
-    recent_trend_text = (
-        f"{trend_days}일 기준 조회수 {_change_text(recent7['views'], prev7['views'])}, "
-        f"시청시간 {_change_text(recent7['watch_minutes'], prev7['watch_minutes'])}, "
-        f"업로드 {recent_uploads - previous_uploads:+,}개입니다."
-    )
-
-except Exception as e:
-    st.warning("채널 추세 데이터를 불러오지 못했습니다.")
-    with st.expander("오류 보기"):
-        st.code(str(e))
-    recent_trend_text = "채널 추세 데이터를 확인하지 못했습니다."
-
-st.divider()
-
-if eligible_videos:
-    diagnosed = sorted(
-        eligible_videos,
-        key=lambda x: x.get("performance_score", 0),
-        reverse=True,
-    )
-
-    data_shortage_count = max(0, len(public_videos) - len(eligible_videos))
-
-    avg_views_diag = (
-        sum(v.get("views", 0) for v in eligible_videos)
-        / len(eligible_videos)
-    )
-    avg_ret_diag = (
-        sum(v.get("avg_percentage", 0) for v in eligible_videos)
-        / len(eligible_videos)
-    )
-    avg_like_diag = (
-        sum(v.get("like_rate", 0) for v in eligible_videos)
-        / len(eligible_videos)
-    )
-    avg_sub_diag = (
-        sum(v.get("sub_conversion_rate", 0) for v in eligible_videos)
-        / len(eligible_videos)
-    )
-
-    views_leader = max(
-        eligible_videos,
-        key=lambda x: x.get("views", 0),
-    )
-    retention_leader = max(
-        eligible_videos,
-        key=lambda x: x.get("avg_percentage", 0),
-    )
-    likes_leader = max(
-        eligible_videos,
-        key=lambda x: x.get("like_rate", 0),
-    )
-    subs_leader = max(
-        eligible_videos,
-        key=lambda x: x.get("sub_conversion_rate", 0),
-    )
-
-    # -----------------------------------------------------
-    # 한눈에 보는 현재 상태
-    # -----------------------------------------------------
-    st.markdown("### 📍 지금 상태")
-
-    s1, s2, s3 = st.columns(3)
-
-    with s1:
-        st.metric(
-            "채널 추세",
-            recent_trend_state,
-        )
-
-    with s2:
-        st.metric(
-            "분석 가능 영상",
-            f"{len(eligible_videos)}개",
-        )
-
-    with s3:
-        st.metric(
-            "데이터 부족",
-            f"{data_shortage_count}개",
-        )
-
-    if recent_trend_text:
-        st.caption(recent_trend_text)
-
-    # -----------------------------------------------------
-    # 가장 먼저 할 일
-    # -----------------------------------------------------
-    st.markdown("### 🎯 지금 가장 먼저 볼 것")
-
-    if avg_ret_diag < 70:
-        main_action_title = "첫 장면과 초반 전개부터 점검"
-        main_action_text = (
-            f"분석 영상 평균 시청률이 {avg_ret_diag:.1f}%입니다. "
-            "다음 영상에서는 첫 1~2초에 결과나 핵심 장면을 더 빨리 보여주고, "
-            "불필요한 설명을 줄이는 실험을 먼저 해보는 게 좋습니다."
-        )
-    elif avg_sub_diag < 0.15:
-        main_action_title = "조회수보다 구독 전환 점검"
-        main_action_text = (
-            f"평균 시청률은 {avg_ret_diag:.1f}%로 버티고 있지만 "
-            f"구독전환율 평균은 {avg_sub_diag:.3f}%입니다. "
-            "잘 본 사람이 다음 영상도 보고 싶게 만드는 주제 일관성과 시리즈화를 먼저 점검해보세요."
-        )
-    elif avg_like_diag < 1.0:
-        main_action_title = "시청 후 반응 포인트 점검"
-        main_action_text = (
-            f"평균 좋아요율이 {avg_like_diag:.2f}%입니다. "
-            "정보는 전달되지만 만족감이나 반응을 끌어내는 결론이 약한지 확인해보세요. "
-            "잘된 영상의 결론 방식과 소재를 비교하는 게 좋습니다."
-        )
-    else:
-        main_action_title = "잘된 패턴 반복 검증"
-        main_action_text = (
-            "현재 주요 지표에서 뚜렷하게 약한 부분은 없습니다. "
-            "새로운 방식을 계속 바꾸기보다 조회수·시청률·구독전환이 함께 좋은 영상의 "
-            "주제와 전개를 비슷한 형태로 2~3개 더 테스트해보세요."
-        )
-
-    st.success(f"**{main_action_title}**\n\n{main_action_text}")
-
-    # -----------------------------------------------------
-    # 베스트 신호
-    # -----------------------------------------------------
-    st.markdown("### 🏆 잘된 영상에서 가져올 것")
-
-    best1, best2, best3 = st.columns(3)
-
-    with best1:
-        st.markdown("**👀 조회수**")
-        st.write(f"`{views_leader['title']}`")
-        st.caption(
-            f"{views_leader.get('views', 0):,}회 · "
-            "소재와 첫 화면이 클릭/노출 이후 반응을 얻었는지 비교해볼 기준 영상"
-        )
-
-    with best2:
-        st.markdown("**⏱️ 시청 유지**")
-        st.write(f"`{retention_leader['title']}`")
-        st.caption(
-            f"평균 시청률 {retention_leader.get('avg_percentage', 0):.1f}% · "
-            "길이와 전개 속도를 참고하기 좋은 영상"
-        )
-
-    with best3:
-        st.markdown("**➕ 구독 전환**")
-        st.write(f"`{subs_leader['title']}`")
-        st.caption(
-            f"구독전환율 {subs_leader.get('sub_conversion_rate', 0):.3f}% · "
-            "다른 영상까지 보고 싶게 만든 주제인지 비교하기 좋은 영상"
-        )
-
-    # -----------------------------------------------------
-    # 평균 지표
-    # -----------------------------------------------------
     st.markdown("### 📊 내 채널 기준선")
+    b1,b2,b3,b4,b5=st.columns(5)
+    b1.metric("평균 조회수", f"{base_views:,.0f}회")
+    b2.metric("중앙 조회수", f"{median_views:,.0f}회")
+    b3.metric("평균 시청률", f"{base_ret:.1f}%")
+    b4.metric("평균 좋아요율", f"{base_like:.2f}%")
+    b5.metric("평균 구독전환율", f"{base_sub:.3f}%")
+    st.caption("※ 위 기준선은 현재 분석 가능한 내 영상들의 비교값이며 YouTube 공식 기준이 아닙니다.")
 
-    b1, b2, b3, b4 = st.columns(4)
-    b1.metric("평균 조회수", f"{avg_views_diag:,.0f}회")
-    b2.metric("평균 시청률", f"{avg_ret_diag:.1f}%")
-    b3.metric("평균 좋아요율", f"{avg_like_diag:.2f}%")
-    b4.metric("평균 구독전환율", f"{avg_sub_diag:.3f}%")
+    st.markdown("### 🔬 영상별 데이터 비교")
+    st.caption("기본 화면은 압축되어 있습니다. 영상을 누르면 채널 기준선과 실제 차이를 확인할 수 있습니다.")
 
-    st.caption(
-        "이 값은 분석 가능한 내 영상들의 평균입니다. "
-        "YouTube 전체 채널에 적용되는 공식 합격선이 아닙니다."
-    )
+    ordered=sorted(report_videos,key=lambda v:v.get("views",0),reverse=True)
 
-    # -----------------------------------------------------
-    # 다음 영상 체크리스트
-    # -----------------------------------------------------
-    st.markdown("### ✅ 다음 영상은 이렇게 테스트")
+    def pct_diff(value, base):
+        return "비교 불가" if base == 0 else f"{((value-base)/abs(base))*100:+.1f}%"
+    def pp_diff(value, base, digits):
+        return f"{value-base:+.{digits}f}%p"
 
-    action_items = []
-
-    if avg_ret_diag < 70:
-        action_items.append(
-            f"**초반:** `{retention_leader['title']}`처럼 핵심 장면을 빨리 보여주는 방식 비교"
-        )
-    else:
-        action_items.append(
-            f"**시청 유지:** `{retention_leader['title']}`의 길이와 전개 속도를 비슷하게 한 편 더 테스트"
-        )
-
-    if avg_like_diag < 1.0:
-        action_items.append(
-            f"**반응:** `{likes_leader['title']}`의 소재·결론 방식과 다른 영상의 차이 비교"
-        )
-    else:
-        action_items.append(
-            f"**좋아요:** 좋아요율 {likes_leader.get('like_rate', 0):.2f}%인 "
-            f"`{likes_leader['title']}`의 반응 포인트 재사용"
-        )
-
-    if avg_sub_diag < 0.15:
-        action_items.append(
-            f"**주제:** `{subs_leader['title']}`처럼 채널의 다음 영상까지 궁금해질 소재를 연속해서 테스트"
-        )
-    else:
-        action_items.append(
-            f"**구독 전환:** 구독전환율 {subs_leader.get('sub_conversion_rate', 0):.3f}%인 "
-            f"`{subs_leader['title']}`과 비슷한 주제군을 추가 테스트"
-        )
-
-    for item in action_items:
-        st.write(f"- {item}")
-
-    # -----------------------------------------------------
-    # 영상 하나씩 쉬운 말로 진단
-    # -----------------------------------------------------
-    st.markdown("### 🔬 영상별 진단")
-
-    def build_video_diagnosis(video):
-        views = video.get("views", 0)
-        retention = video.get("avg_percentage", 0)
-        like_rate = video.get("like_rate", 0)
-        sub_rate = video.get("sub_conversion_rate", 0)
-
-        strong_signals = []
-        weak_signals = []
-
-        if views >= avg_views_diag * 1.20:
-            strong_signals.append("조회수")
-        elif views <= avg_views_diag * 0.70:
-            weak_signals.append("조회수")
-
-        if retention >= avg_ret_diag * 1.10:
-            strong_signals.append("시청 유지")
-        elif retention <= avg_ret_diag * 0.90:
-            weak_signals.append("시청 유지")
-
-        if like_rate >= max(avg_like_diag * 1.15, avg_like_diag + 0.15):
-            strong_signals.append("좋아요 반응")
-        elif like_rate <= avg_like_diag * 0.75:
-            weak_signals.append("좋아요 반응")
-
-        if sub_rate >= max(avg_sub_diag * 1.20, avg_sub_diag + 0.02):
-            strong_signals.append("구독 전환")
-        elif sub_rate < 0 and avg_sub_diag >= 0:
-            weak_signals.append("구독 전환")
-        elif avg_sub_diag > 0 and sub_rate <= avg_sub_diag * 0.60:
-            weak_signals.append("구독 전환")
-
-        if strong_signals:
-            strength_text = ", ".join(strong_signals)
-            why_text = f"내 채널 평균과 비교하면 **{strength_text}** 쪽이 강하게 잡힙니다."
-        else:
-            why_text = "내 채널 평균과 비교했을 때 특별히 튀는 강점은 아직 뚜렷하지 않습니다."
-
-        if "시청 유지" in weak_signals:
-            next_text = "다음 비슷한 소재에서는 첫 장면·첫 문장·영상 길이를 가장 먼저 바꿔보세요."
-        elif "구독 전환" in weak_signals:
-            next_text = "비슷한 조회수가 나와도 다음 영상까지 이어질 이유가 약한지 주제 연결성을 점검해보세요."
-        elif "좋아요 반응" in weak_signals:
-            next_text = "결론의 만족감이나 놀라움이 더 분명하게 남도록 마무리를 비교해보세요."
-        elif "조회수" in weak_signals and retention >= avg_ret_diag:
-            next_text = "시청 유지는 나쁘지 않으므로 소재 선택·첫 화면·제목 쪽을 먼저 비교해볼 가치가 있습니다."
-        elif strong_signals:
-            next_text = "이 영상의 주제·길이·전개 중 한두 요소를 유지한 후 비슷한 영상으로 재검증해보세요."
-        else:
-            next_text = "한 번에 여러 요소를 바꾸기보다 훅이나 소재 중 하나만 바꿔 다음 영상과 비교해보세요."
-
-        return why_text, next_text
-
-    for index, video in enumerate(diagnosed, start=1):
-        why_text, next_text = build_video_diagnosis(video)
-        grade = video.get("performance_grade", "-")
-
-        with st.expander(
-            f"{index}. {grade} · {video['title']}",
-            expanded=(index <= 3),
-        ):
-            m1, m2, m3, m4 = st.columns(4)
-            m1.metric("조회수", f"{video.get('views', 0):,}회")
-            m2.metric("평균 시청률", f"{video.get('avg_percentage', 0):.1f}%")
-            m3.metric("좋아요율", f"{video.get('like_rate', 0):.2f}%")
-            m4.metric("구독전환율", f"{video.get('sub_conversion_rate', 0):.3f}%")
-
-            st.markdown(f"**데이터에서 보이는 점**  \n{why_text}")
-            st.markdown(f"**다음에 바꿔볼 것**  \n{next_text}")
-
-    if data_shortage_count > 0:
-        with st.expander(
-            f"⏳ 아직 평가하지 않은 영상 {data_shortage_count}개",
-            expanded=False,
-        ):
-            shortage_videos = [
-                v for v in public_videos
-                if v not in eligible_videos
+    for rank,v in enumerate(ordered,start=1):
+        summary=(f"조회수 {v['views']:,} · 시청률 {v['avg_percentage']:.1f}% · "
+                 f"좋아요 {v['like_rate']:.2f}% · 구독 {v['sub_conversion_rate']:.3f}%")
+        with st.expander(f"{rank}. {v['title']}  |  {summary}"):
+            rows=[
+                ["조회수",f"{v['views']:,}회",f"{base_views:,.0f}회",pct_diff(v["views"],base_views)],
+                ["평균 시청률",f"{v['avg_percentage']:.1f}%",f"{base_ret:.1f}%",pp_diff(v["avg_percentage"],base_ret,1)],
+                ["좋아요율",f"{v['like_rate']:.2f}%",f"{base_like:.2f}%",pp_diff(v["like_rate"],base_like,2)],
+                ["구독전환율",f"{v['sub_conversion_rate']:.3f}%",f"{base_sub:.3f}%",pp_diff(v["sub_conversion_rate"],base_sub,3)],
             ]
+            st.dataframe(pd.DataFrame(rows,columns=["지표","이 영상","채널 기준선","차이"]),
+                         hide_index=True,use_container_width=True)
 
-            shortage_rows = []
-            for video in shortage_videos:
-                if video.get("views", 0) < 100:
-                    reason = "조회수 100회 미만"
-                elif video.get("video_id") not in video_analytics:
-                    reason = "Analytics 집계 대기"
-                else:
-                    reason = "데이터 부족"
+            high=[]; low=[]
+            for name,val,base in [
+                ("조회수",v["views"],base_views),("시청률",v["avg_percentage"],base_ret),
+                ("좋아요율",v["like_rate"],base_like),("구독전환율",v["sub_conversion_rate"],base_sub)]:
+                if val>base: high.append(name)
+                elif val<base: low.append(name)
 
-                shortage_rows.append({
-                    "영상": video.get("title", ""),
-                    "조회수": video.get("views", 0),
-                    "상태": reason,
-                })
+            st.markdown("**데이터에서 확인되는 점**")
+            parts=[]
+            if high: parts.append("기준선보다 높음: "+", ".join(high))
+            if low: parts.append("기준선보다 낮음: "+", ".join(low))
+            st.write(" · ".join(parts) if parts else "채널 기준선과 비슷한 수준입니다.")
 
-            st.dataframe(
-                pd.DataFrame(shortage_rows),
-                use_container_width=True,
-                hide_index=True,
+            st.markdown("**다음 테스트**")
+            st.write(
+                "이 영상과 비슷한 소재·길이·전개 중 한 요소를 유지한 영상을 추가로 테스트해 "
+                "같은 성과가 반복되는지 확인해보세요. 현재 수치만으로 원인을 단정하지 않습니다."
             )
-
 else:
-    st.info(
-        "아직 자동진단에 사용할 데이터가 충분하지 않습니다. "
-        "조회수 100회 이상이고 Analytics가 집계된 공개 영상이 생기면 자동으로 진단합니다."
-    )
-
-st.divider()
+    st.info("아직 비교 가능한 영상이 없습니다.")
 
 
 # =========================================================
