@@ -1083,13 +1083,19 @@ if page in ("🧾 전체 보기", "📅 기간·달력"):
 
     try:
 
-        current_summary = (
-            get_period_summary(
+        try:
+            current_summary = get_period_summary(
                 yt_analytics,
                 start_date,
                 end_date,
             )
-        )
+        except Exception:
+            time.sleep(1)
+            current_summary = get_period_summary(
+                yt_analytics,
+                start_date,
+                end_date,
+            )
 
         (
             previous_start,
@@ -1099,24 +1105,36 @@ if page in ("🧾 전체 보기", "📅 기간·달력"):
             end_date,
         )
 
-        previous_summary = (
-            get_period_summary(
+        try:
+            previous_summary = get_period_summary(
                 yt_analytics,
                 previous_start,
                 previous_end,
             )
-        )
+        except Exception:
+            time.sleep(1)
+            previous_summary = get_period_summary(
+                yt_analytics,
+                previous_start,
+                previous_end,
+            )
 
     except Exception as e:
 
-        st.error(
-            "기간별 Analytics 데이터를 "
-            "가져오지 못했습니다."
-        )
+        _err_text = str(e)
 
-        st.code(
-            str(e)
-        )
+        if "backendError" in _err_text or "Internal error encountered" in _err_text or "HttpError 500" in _err_text:
+            st.warning(
+                "⚠️ YouTube Analytics 서버가 일시적으로 응답하지 않습니다. "
+                "자동으로 한 번 다시 시도했지만 아직 실패했습니다. 잠시 후 다시 분석해 주세요."
+            )
+        else:
+            st.error(
+                "기간별 Analytics 데이터를 가져오지 못했습니다."
+            )
+
+        with st.expander("기술 오류 상세보기"):
+            st.code(_err_text)
 
         st.stop()
 
@@ -1688,14 +1706,23 @@ if page in ("🧾 전체 보기", "📅 기간·달력"):
         "🕘 과거 일별 분석"
     )
 
-    if "applied_detail_day" not in st.session_state:
-        st.session_state.applied_detail_day = st.session_state.get(
-            "calendar_selected_day",
-            end_date,
-        )
-
     # 최근 일별 Analytics는 지연될 수 있으므로 D-2까지만 허용
     _detail_max_day = today - timedelta(days=2)
+
+    # 달력/이전 세션에 오늘·어제 값이 남아 있어도
+    # date_input의 최대값을 넘지 않도록 모두 안전하게 보정
+    _detail_default_day = st.session_state.get(
+        "calendar_selected_day",
+        end_date,
+    )
+    if _detail_default_day > _detail_max_day:
+        _detail_default_day = _detail_max_day
+
+    if "applied_detail_day" not in st.session_state:
+        st.session_state.applied_detail_day = _detail_default_day
+    elif st.session_state.applied_detail_day > _detail_max_day:
+        st.session_state.applied_detail_day = _detail_max_day
+
     if "detail_day_input" in st.session_state:
         _saved_detail_day = st.session_state["detail_day_input"]
         if _saved_detail_day is not None and _saved_detail_day > _detail_max_day:
@@ -1703,7 +1730,7 @@ if page in ("🧾 전체 보기", "📅 기간·달력"):
 
     detail_day_input = st.date_input(
         "확인할 날짜",
-        value=st.session_state.get("calendar_selected_day", end_date),
+        value=_detail_default_day,
         min_value=date(2005, 1, 1),
         max_value=_detail_max_day,
         key="detail_day_input",
