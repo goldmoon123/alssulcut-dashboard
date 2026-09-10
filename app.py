@@ -201,6 +201,29 @@ st.markdown(
             text-overflow: clip !important;
             white-space: nowrap !important;
         }
+
+        /* 3개짜리 핵심 지표는 모바일에서 2열 + 마지막 한 칸 전체 폭 */
+        [data-testid="stHorizontalBlock"]:has([data-testid="stMetric"]):has(> div:nth-child(3)):not(:has(> div:nth-child(4))) {
+            display: grid !important;
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+            gap: 0.55rem !important;
+        }
+        [data-testid="stHorizontalBlock"]:has([data-testid="stMetric"]):has(> div:nth-child(3)):not(:has(> div:nth-child(4))) > div:last-child {
+            grid-column: 1 / -1;
+        }
+
+        /* 긴 표/확장영역은 화면 밖으로 삐져나오지 않게 */
+        [data-testid="stDataFrame"],
+        [data-testid="stExpander"] {
+            max-width: 100% !important;
+            overflow-x: auto !important;
+        }
+
+        /* 메뉴/라디오 문구가 모바일에서 한 줄 강제로 잘리지 않게 */
+        div[role="radiogroup"] label p {
+            white-space: normal !important;
+            line-height: 1.25 !important;
+        }
     }
 
     .status-two-grid {
@@ -585,7 +608,7 @@ except Exception as e:
     )
 
     with st.expander(
-        "오류 내용"
+        "기술 오류 상세보기"
     ):
 
         st.code(
@@ -2138,7 +2161,7 @@ if page == "📈 성장 분석":
         trend_prev = None
         trend_daily_rows = []
         st.warning("채널 추세 데이터를 일부 불러오지 못했습니다.")
-        with st.expander("오류 내용"):
+        with st.expander("기술 오류 상세보기"):
             st.code(str(exc))
 
     if trend_now and trend_prev:
