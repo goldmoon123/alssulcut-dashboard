@@ -112,27 +112,35 @@ st.markdown(
         h3 { font-size: 1.25rem !important; line-height: 1.2 !important; }
 
         [data-testid="stMetric"] {
-            padding: 0.45rem 0.55rem !important;
+            width: 100% !important;
+            min-width: 0 !important;
+            padding: 0.65rem 0.75rem !important;
             border: 1px solid rgba(128,128,128,.18);
             border-radius: 12px;
-            min-height: 92px;
+            min-height: 96px;
         }
-        [data-testid="stMetricLabel"] { font-size: 0.82rem !important; }
+        [data-testid="stMetricLabel"] {
+            width: 100% !important;
+            min-width: 0 !important;
+            font-size: 0.82rem !important;
+        }
         [data-testid="stMetricValue"] { font-size: 1.65rem !important; }
         [data-testid="stMetricDelta"] { font-size: 0.75rem !important; }
 
-        /* 4칸 지표는 모바일에서 2 x 2 */
-        [data-testid="stHorizontalBlock"]:has(> div:nth-child(4)):not(:has(> div:nth-child(5))) {
+        /* metric 묶음만 모바일 2열로 정리 */
+        [data-testid="stHorizontalBlock"]:has([data-testid="stMetric"]):has(> div:nth-child(4)):not(:has(> div:nth-child(5))),
+        [data-testid="stHorizontalBlock"]:has([data-testid="stMetric"]):has(> div:nth-child(5)):not(:has(> div:nth-child(6))) {
             display: grid !important;
             grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-            gap: 0.55rem !important;
+            gap: 0.65rem !important;
+            width: 100% !important;
         }
 
-        /* 5칸 현황도 너무 길어지지 않게 2열 */
-        [data-testid="stHorizontalBlock"]:has(> div:nth-child(5)):not(:has(> div:nth-child(6))) {
-            display: grid !important;
-            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-            gap: 0.55rem !important;
+        /* Streamlit column의 기존 flex 폭을 해제해야 카드가 실제 반쪽 폭을 사용함 */
+        [data-testid="stHorizontalBlock"]:has([data-testid="stMetric"]) > div[data-testid="column"] {
+            width: 100% !important;
+            min-width: 0 !important;
+            flex: none !important;
         }
 
         /* 달력: 7칸을 무조건 한 줄에 유지 */
@@ -206,7 +214,8 @@ st.markdown(
         [data-testid="stHorizontalBlock"]:has([data-testid="stMetric"]):has(> div:nth-child(3)):not(:has(> div:nth-child(4))) {
             display: grid !important;
             grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-            gap: 0.55rem !important;
+            gap: 0.65rem !important;
+            width: 100% !important;
         }
         [data-testid="stHorizontalBlock"]:has([data-testid="stMetric"]):has(> div:nth-child(3)):not(:has(> div:nth-child(4))) > div:last-child {
             grid-column: 1 / -1;
