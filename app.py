@@ -124,22 +124,25 @@ st.markdown(
             min-width: 0 !important;
             font-size: 0.82rem !important;
         }
-        [data-testid="stMetricValue"] { font-size: 1.65rem !important; }
+        [data-testid="stMetricValue"] {
+            width: 100% !important;
+            min-width: 0 !important;
+            font-size: 1.65rem !important;
+        }
         [data-testid="stMetricDelta"] { font-size: 0.75rem !important; }
 
-        /* metric 묶음만 모바일 2열로 정리 */
-        [data-testid="stHorizontalBlock"]:has([data-testid="stMetric"]):has(> div:nth-child(4)):not(:has(> div:nth-child(5))),
-        [data-testid="stHorizontalBlock"]:has([data-testid="stMetric"]):has(> div:nth-child(5)):not(:has(> div:nth-child(6))) {
+        /* 모바일에서는 metric 묶음을 1열로 쌓아 제목이 세로로 찢어지지 않게 함 */
+        [data-testid="stHorizontalBlock"]:has([data-testid="stMetric"]) {
             display: grid !important;
-            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+            grid-template-columns: 1fr !important;
             gap: 0.65rem !important;
             width: 100% !important;
         }
 
-        /* Streamlit column의 기존 flex 폭을 해제해야 카드가 실제 반쪽 폭을 사용함 */
         [data-testid="stHorizontalBlock"]:has([data-testid="stMetric"]) > div[data-testid="column"] {
             width: 100% !important;
             min-width: 0 !important;
+            max-width: 100% !important;
             flex: none !important;
         }
 
@@ -213,7 +216,7 @@ st.markdown(
         /* 3개짜리 핵심 지표는 모바일에서 2열 + 마지막 한 칸 전체 폭 */
         [data-testid="stHorizontalBlock"]:has([data-testid="stMetric"]):has(> div:nth-child(3)):not(:has(> div:nth-child(4))) {
             display: grid !important;
-            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+            grid-template-columns: 1fr !important;
             gap: 0.65rem !important;
             width: 100% !important;
         }
