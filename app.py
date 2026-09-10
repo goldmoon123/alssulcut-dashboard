@@ -984,8 +984,15 @@ if page == "🏠 홈":
 
     st.divider()
 
-if page == "🏠 홈":
-    st.divider()
+    st.markdown("### 📅 상세 분석")
+    st.caption("기간 성과·일별 차트·월간 달력·과거 일별 분석은 필요할 때만 펼쳐서 확인합니다.")
+    show_home_details = st.toggle(
+        "기간·달력 상세 보기",
+        value=False,
+        key="show_home_period_details_v648",
+    )
+
+if page == "🏠 홈" and show_home_details:
     # =========================================================
     # 12. 날짜 / 기간 분석
     # =========================================================
@@ -1321,9 +1328,30 @@ if page == "🏠 홈":
         daily_df = pd.DataFrame(daily_data)
         daily_df["date"] = pd.to_datetime(daily_df["date"])
 
-        # 데이터가 없는 날짜도 0으로 채움
+        # 오래된 날짜의 누락값만 0으로 처리하고, 최근 2일은 집계 중으로 남깁니다.
         full_dates = pd.date_range(start=start_date, end=end_date, freq="D")
-        daily_df = daily_df.set_index("date").reindex(full_dates).fillna(0)
+        daily_df = daily_df.set_index("date").reindex(full_dates)
+
+        metric_cols = [
+            col for col in ["views", "net_subscribers"]
+            if col in daily_df.columns
+        ]
+        recent_cutoff = pd.Timestamp(today - timedelta(days=2))
+
+        for idx in daily_df.index:
+            if idx < recent_cutoff:
+                for col in metric_cols:
+                    if pd.isna(daily_df.at[idx, col]):
+                        daily_df.at[idx, col] = 0
+            else:
+                # 최근 날짜가 전부 0이면 실제 0으로 단정하지 않고 차트에서 비워 둡니다.
+                if metric_cols and all(
+                    pd.isna(daily_df.at[idx, col]) or float(daily_df.at[idx, col] or 0) == 0
+                    for col in metric_cols
+                ):
+                    for col in metric_cols:
+                        daily_df.at[idx, col] = float("nan")
+
         daily_df.index.name = "날짜"
         daily_df.index = [dt.strftime("%m/%d") for dt in daily_df.index]
 
@@ -1332,6 +1360,7 @@ if page == "🏠 홈":
 
         st.subheader("👤 일별 순구독자")
         st.bar_chart(daily_df[["net_subscribers"]], use_container_width=True, height=260)
+        st.caption("※ 최근 날짜의 값이 비어 있으면 0회가 아니라 YouTube Analytics 집계 중일 수 있습니다.")
 
     else:
         st.info("선택한 기간에 일별 Analytics 데이터가 없습니다.")
