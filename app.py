@@ -924,7 +924,7 @@ if page == "🏠 홈":
             "공개 영상에서 발생한 순구독자",
             f"{total_net_subscribers:+,}명"
         )
-        st.caption("순구독자 = 구독자 획득 - 구독자 이탈")
+        c4.caption("구독자 획득 - 구독자 이탈")
     else:
         st.info("현재 공개 영상이 없습니다.")
 
@@ -935,7 +935,7 @@ if page == "🏠 홈":
         c1, c2, c3, c4 = st.columns(4)
         c1.metric("🟢 공개", f"{len(public_videos):,}개")
         c2.metric("🟡 예약", f"{len(scheduled_videos):,}개")
-        c3.metric("🔒 비공개", f"{len(private_videos):,}개")
+        c3.metric("🔴 비공개", f"{len(private_videos):,}개")
         c4.metric("🔵 일부공개", f"{len(unlisted_videos):,}개")
         st.caption("예약·비공개·일부공개 영상은 성과 평균과 순위에서 제외됩니다.")
 
@@ -1783,10 +1783,10 @@ if page == "🏠 홈" and show_home_details:
         )
 
         if _recent_all_zero:
-            c1.metric("그날 조회수", "집계 중")
-            c2.metric("그날 순구독자", "집계 중")
-            c3.metric("그날 시청시간", "집계 중")
-            c4.metric("그날 좋아요", "집계 중")
+            c1.metric("그날 조회수", "⏳ 집계 중")
+            c2.metric("그날 순구독자", "⏳ 집계 중")
+            c3.metric("그날 시청시간", "⏳ 집계 중")
+            c4.metric("그날 좋아요", "⏳ 집계 중")
             st.info(
                 "📌 최근 날짜라 아직 일별 Analytics가 확정되지 않았습니다. "
                 "아래 업로드 영상의 '현재 조회수'는 정상적으로 확인할 수 있습니다."
@@ -1866,8 +1866,8 @@ if page == "🏠 홈" and show_home_details:
         cc1, cc2 = st.columns(2)
 
         if is_recent_detail and day_total_views == 0:
-            cc1.metric("당일 업로드 영상", "집계 중")
-            cc2.metric("기존 영상", "집계 중")
+            cc1.metric("당일 업로드 영상", "⏳ 집계 중")
+            cc2.metric("기존 영상", "⏳ 집계 중")
             st.info(
                 "📌 조회수 구성도 아직 집계 중입니다. "
                 "오늘 업로드 영상의 실제 누적 조회수는 아래에서 확인하세요."
@@ -2343,7 +2343,7 @@ if page == "📈 성장 분석":
         def _growth_state(video):
             series = growth_cache.get(video.get("video_id"), [])
             if len(series) < 4:
-                return "데이터 축적 중"
+                return "⏳ 데이터 축적 중"
 
             daily = [x["daily_views"] for x in series]
             recent = daily[-2:]
@@ -2421,9 +2421,9 @@ if page == "📈 성장 분석":
                     f"D+{_comp['milestone']} {_comp['rank']}위/{_comp['sample']}개"
                 )
             elif _comp:
-                _same_age_text = f"비교 데이터 부족({_comp['sample']}개)"
+                _same_age_text = f"⏳ 비교 데이터 부족({_comp['sample']}개)"
             else:
-                _same_age_text = "성장 데이터 집계 중"
+                _same_age_text = "⏳ 성장 데이터 집계 중"
 
             summary = (
                 f"📅 {published_text}{age_text} | "
