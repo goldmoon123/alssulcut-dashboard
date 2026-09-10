@@ -2218,9 +2218,12 @@ if page == "📈 성장 분석":
         b5.metric("평균 구독전환율", f"{base_sub:.3f}%")
         st.caption("※ 위 기준선은 현재 분석 가능한 내 영상들의 비교값이며 YouTube 공식 기준이 아닙니다.")
 
-        st.markdown("### 🔬 영상별 데이터 비교")
+        st.markdown("### 🔬 영상별 성과 비교")
         st.caption(
-            "한 줄에는 현재 성과만 간단히 표시합니다. 영상을 누르면 기준선 비교와 실제 일별 성장 흐름을 확인할 수 있습니다."
+            "한 줄에는 현재 성과만 표시합니다. 영상을 누르면 채널 기준선과 D+N 실제 성장 데이터를 확인할 수 있습니다."
+        )
+        st.caption(
+            "※ 이 화면은 실제 수치 비교만 표시합니다. 원인 판단과 개선 메모는 운영(V6.7)에서 사용자가 직접 기록합니다."
         )
 
         # 실제 영상별 일별 Analytics는 한 번만 가져와 아래 모든 성장 비교에서 재사용합니다.
@@ -2440,13 +2443,33 @@ if page == "📈 성장 분석":
                 st.dataframe(pd.DataFrame(rows,columns=["지표","이 영상","채널 기준선","차이"]),
                              hide_index=True,use_container_width=True)
 
-                st.markdown("**실제 성장 흐름**")
+                high=[]; low=[]; similar=[]
+                for name,val,base in [
+                    ("조회수",v["views"],base_views),("시청률",v["avg_percentage"],base_ret),
+                    ("좋아요율",v["like_rate"],base_like),("구독전환율",v["sub_conversion_rate"],base_sub)]:
+                    level = compare_level(val, base, name)
+                    if level == "high":
+                        high.append(name)
+                    elif level == "low":
+                        low.append(name)
+                    else:
+                        similar.append(name)
+
+                parts=[]
+                if high: parts.append("높음: "+", ".join(high))
+                if similar: parts.append("비슷: "+", ".join(similar))
+                if low: parts.append("낮음: "+", ".join(low))
+                st.caption(
+                    "📌 기준선 비교 · " + (" · ".join(parts) if parts else "채널 기준선과 비슷한 수준")
+                )
+
+                st.markdown("**D+N 실제 성장 데이터**")
                 _series = growth_cache.get(v.get("video_id"), [])
 
                 if growth_error:
                     st.caption("영상별 일별 Analytics를 불러오지 못해 성장 비교는 표시하지 않습니다.")
                 elif not _series:
-                    st.caption("아직 일별 Analytics가 충분히 집계되지 않았습니다.")
+                    st.caption("⏳ 아직 일별 Analytics가 충분히 집계되지 않았습니다.")
                 else:
                     _milestone_rows = []
                     for _d in [0, 1, 3, 7, 14, 28]:
@@ -2483,7 +2506,7 @@ if page == "📈 성장 분석":
                             )
                         else:
                             st.caption(
-                                f"D+{_comp['milestone']} 비교 가능 영상이 {_comp['sample']}개라 "
+                                f"⏳ D+{_comp['milestone']} 비교 가능 영상이 {_comp['sample']}개라 "
                                 "순위 평가는 보류합니다."
                             )
 
@@ -2496,40 +2519,21 @@ if page == "📈 성장 분석":
                     ])
                     if not _chart_df.empty:
                         _chart_df = _chart_df.set_index("업로드 후")
-                        st.line_chart(
-                            _chart_df,
-                            use_container_width=True,
-                            height=220,
+                        _show_growth_chart = st.toggle(
+                            "성장 그래프 보기",
+                            value=False,
+                            key=f"growth_chart_{v['video_id']}",
                         )
-                        st.caption(
-                            "※ D+N은 YouTube Analytics의 날짜 단위 데이터 기준입니다. "
-                            "정확한 업로드 후 N×24시간 값과는 다를 수 있습니다."
-                        )
-
-                high=[]; low=[]; similar=[]
-                for name,val,base in [
-                    ("조회수",v["views"],base_views),("시청률",v["avg_percentage"],base_ret),
-                    ("좋아요율",v["like_rate"],base_like),("구독전환율",v["sub_conversion_rate"],base_sub)]:
-                    level = compare_level(val, base, name)
-                    if level == "high":
-                        high.append(name)
-                    elif level == "low":
-                        low.append(name)
-                    else:
-                        similar.append(name)
-
-                st.markdown("**데이터에서 확인되는 점**")
-                parts=[]
-                if high: parts.append("기준선보다 높음: "+", ".join(high))
-                if similar: parts.append("비슷한 수준: "+", ".join(similar))
-                if low: parts.append("기준선보다 낮음: "+", ".join(low))
-                st.write(" · ".join(parts) if parts else "채널 기준선과 비슷한 수준입니다.")
-
-                st.markdown("**다음 테스트**")
-                st.write(
-                    "이 영상과 비슷한 소재·길이·전개 중 한 요소를 유지한 영상을 추가로 테스트해 "
-                    "같은 성과가 반복되는지 확인해보세요. 현재 수치만으로 원인을 단정하지 않습니다."
-                )
+                        if _show_growth_chart:
+                            st.line_chart(
+                                _chart_df,
+                                use_container_width=True,
+                                height=220,
+                            )
+                            st.caption(
+                                "※ D+N은 YouTube Analytics의 날짜 단위 데이터 기준입니다. "
+                                "정확한 업로드 후 N×24시간 값과는 다를 수 있습니다."
+                            )
     else:
         st.info("아직 비교 가능한 영상이 없습니다.")
 
