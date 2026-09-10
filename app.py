@@ -192,6 +192,56 @@ st.markdown(
 
         /* 모바일에서 섹션을 조금 더 촘촘하게 */
         [data-testid="stVerticalBlock"] { gap: 0.65rem !important; }
+
+        /* 성장 분석 - 내 채널 기준선 5개 지표를 모바일에서 3 + 2로 배치 */
+        .growth-baseline-grid-start + div[data-testid="stHorizontalBlock"] {
+            display: grid !important;
+            grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+            gap: 0.55rem !important;
+            width: 100% !important;
+        }
+
+        .growth-baseline-grid-start + div[data-testid="stHorizontalBlock"] > div[data-testid="column"] {
+            width: 100% !important;
+            min-width: 0 !important;
+            max-width: 100% !important;
+            flex: none !important;
+        }
+
+        .growth-baseline-grid-start + div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-child(n+4) {
+            grid-column: span 1;
+        }
+
+        @media (max-width: 520px) {
+            .growth-baseline-grid-start + div[data-testid="stHorizontalBlock"] {
+                grid-template-columns: repeat(6, minmax(0, 1fr)) !important;
+            }
+
+            .growth-baseline-grid-start + div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-child(1),
+            .growth-baseline-grid-start + div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-child(2),
+            .growth-baseline-grid-start + div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-child(3) {
+                grid-column: span 2 !important;
+            }
+
+            .growth-baseline-grid-start + div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-child(4),
+            .growth-baseline-grid-start + div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:nth-child(5) {
+                grid-column: span 3 !important;
+            }
+
+            .growth-baseline-grid-start + div[data-testid="stHorizontalBlock"] [data-testid="stMetric"] {
+                min-height: 92px !important;
+            }
+
+            .growth-baseline-grid-start + div[data-testid="stHorizontalBlock"] [data-testid="stMetricLabel"] p {
+                font-size: 0.76rem !important;
+                line-height: 1.2 !important;
+            }
+
+            .growth-baseline-grid-start + div[data-testid="stHorizontalBlock"] [data-testid="stMetricValue"] {
+                font-size: 1.45rem !important;
+            }
+        }
+
         [data-testid="stImage"] img { border-radius: 10px !important; }
         [data-testid="stDataFrame"] { font-size: 0.78rem !important; }
         [data-baseweb="tab-list"] { gap: 0.15rem !important; }
@@ -2245,12 +2295,15 @@ if page == "📈 성장 분석":
         base_sub = sum(v["sub_conversion_rate"] for v in report_videos) / len(report_videos)
 
         st.markdown("### 📊 내 채널 기준선")
+        baseline_wrap_class = "growth-baseline-grid"
+        st.markdown('<div class="growth-baseline-grid-start"></div>', unsafe_allow_html=True)
         b1,b2,b3,b4,b5=st.columns(5)
         b1.metric("분석 대상 평균 조회수", f"{base_views:,.0f}회")
         b2.metric("분석 대상 중앙 조회수", f"{median_views:,.0f}회")
         b3.metric("평균 시청률", f"{base_ret:.1f}%")
         b4.metric("평균 좋아요율", f"{base_like:.2f}%")
         b5.metric("평균 구독전환율", f"{base_sub:.3f}%")
+        st.markdown('<div class="growth-baseline-grid-end"></div>', unsafe_allow_html=True)
         st.caption("※ 위 기준선은 현재 분석 가능한 내 영상들의 비교값이며 YouTube 공식 기준이 아닙니다.")
 
         st.markdown("### 🔬 영상별 성과 비교")
