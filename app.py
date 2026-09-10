@@ -766,7 +766,7 @@ st.success(
 # V6.4 2차 — 실제 화면 전환 메뉴
 # =========================================================
 st.markdown("## 🧭 Shorts Scope")
-st.caption("전체를 한 번에 보거나, 필요한 화면만 골라서 볼 수 있습니다.")
+st.caption("필요한 화면을 골라서 확인합니다.")
 
 page = st.radio(
     "화면 선택",
@@ -777,7 +777,7 @@ page = st.radio(
 )
 
 _page_help = {
-    "🏠 홈": "채널 전체 상태와 기간·달력 핵심 성과를 확인",
+    "🏠 홈": "채널 핵심 상태와 공개 영상 성과 확인",
     "📈 성장 분석": "채널 기준선과 영상별 실제 성장 흐름 비교",
     "📊 채널 패턴": "최근 영상 묶음 · 요일/시간 · 소재별 패턴이 들어갈 자리",
     "🧪 운영": "목표 · 태그 · 실험 기록 · 영상 메모리 카드가 들어갈 자리",
@@ -847,7 +847,7 @@ if page == "🏠 홈":
     st.subheader(
         f"📺 {channel_info['channel_name']}"
     )
-
+    st.caption("채널 전체 상태와 공개 영상 핵심 성과를 한눈에 확인합니다.")
 
     c1, c2, c3 = st.columns(3)
 
@@ -857,78 +857,25 @@ if page == "🏠 홈":
     )
 
     c2.metric(
-        "총 조회수",
+        "채널 총 조회수",
         f"{channel_info['total_views']:,}회"
     )
 
     c3.metric(
         "공개 영상",
-        f"{channel_info['public_video_count']:,}개"
+        f"{len(public_videos):,}개"
     )
 
     st.divider()
 
-
     # =========================================================
-    # 11. 영상 현황
-    # =========================================================
-
-    st.subheader(
-        "🎬 영상 현황"
-    )
-
-    c1, c2, c3 = st.columns(3)
-
-    c1.metric(
-        "전체",
-        f"{len(videos)}개"
-    )
-
-    c2.metric(
-        "🟢 공개",
-        f"{len(public_videos)}개"
-    )
-
-    c3.metric(
-        "🟡 예약",
-        f"{len(scheduled_videos)}개"
-    )
-
-    st.markdown(
-        f"""
-        <div class="status-two-grid">
-            <div class="status-card">
-                <div class="status-label">🔒 비공개</div>
-                <div class="status-value">{len(private_videos)}개</div>
-            </div>
-            <div class="status-card">
-                <div class="status-label">🔵 일부공개</div>
-                <div class="status-value">{len(unlisted_videos)}개</div>
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    st.caption(
-        "※ 예약·비공개·일부공개 영상은 "
-        "성과 평균과 순위에서 제외됩니다."
-    )
-
-    st.divider()
-
-
-
-    # =========================================================
-    # 19. 공개 영상 전체 성과
+    # 홈 — 공개 영상 핵심 성과
     # =========================================================
 
-    st.header("🎯 전체 공개 영상 분석")
+    st.subheader("🎯 공개 영상 핵심 성과")
     st.caption("현재 공개 상태인 영상 전체의 누적 성과입니다.")
 
-
     if public_videos:
-
         total_views = sum(
             video["views"]
             for video in public_videos
@@ -954,13 +901,10 @@ if page == "🏠 홈":
             for video in public_videos
         )
 
-
-        c1, c2, c3, c4 = (
-            st.columns(4)
-        )
+        c1, c2, c3, c4 = st.columns(4)
 
         c1.metric(
-            "전체 공개 영상 평균 조회수",
+            "평균 조회수",
             f"{average_views:,.0f}회"
         )
 
@@ -980,7 +924,20 @@ if page == "🏠 홈":
             "공개 영상에서 발생한 순구독자",
             f"{total_net_subscribers:+,}명"
         )
+        st.caption("순구독자 = 구독자 획득 - 구독자 이탈")
+    else:
+        st.info("현재 공개 영상이 없습니다.")
 
+    with st.expander(
+        f"🎬 영상 상태 상세 · 전체 {len(videos):,}개",
+        expanded=False,
+    ):
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("🟢 공개", f"{len(public_videos):,}개")
+        c2.metric("🟡 예약", f"{len(scheduled_videos):,}개")
+        c3.metric("🔒 비공개", f"{len(private_videos):,}개")
+        c4.metric("🔵 일부공개", f"{len(unlisted_videos):,}개")
+        st.caption("예약·비공개·일부공개 영상은 성과 평균과 순위에서 제외됩니다.")
 
     st.divider()
 
@@ -989,7 +946,7 @@ if page == "🏠 홈":
     show_home_details = st.toggle(
         "기간·달력 상세 보기",
         value=False,
-        key="show_home_period_details_v648",
+        key="show_home_period_details_v649",
     )
 
 if page == "🏠 홈" and show_home_details:
