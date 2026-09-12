@@ -1184,7 +1184,7 @@ st.caption("필요한 화면을 골라서 확인합니다.")
 
 page = st.radio(
     "화면 선택",
-    ["🏠 홈", "📈 성장 분석", "🔎 영상 찾기"],
+    ["🏠 홈", "📈 성장 분석", "📊 채널 패턴", "🔎 영상 찾기"],
     horizontal=True,
     label_visibility="collapsed",
     key="main_page_v64",
@@ -1193,6 +1193,7 @@ page = st.radio(
 _page_help = {
     "🏠 홈": "채널 핵심 상태와 공개 영상 성과 확인",
     "📈 성장 분석": "채널 기준선과 영상별 실제 성장 흐름 비교",
+    "📊 채널 패턴": "최근 영상 묶음 · 요일 · 업로드 시간대별 실제 성과 비교",
     "🔎 영상 찾기": "검색 · 전체 데이터 · TOP 순위 · Excel · 예약 영상",
 }
 
@@ -2453,6 +2454,187 @@ if page == "🏠 홈" and show_home_details:
 
     st.divider()
 
+
+if page == "📊 채널 패턴":
+    st.header("📊 채널 패턴")
+    st.caption(
+        "최근 업로드 영상의 실제 성과를 묶어서 비교합니다. "
+        "원인을 추측하지 않고 업로드 시점과 YouTube 데이터만 사용합니다."
+    )
+
+    def _pattern_publish_dt(video):
+        raw = video.get("published_raw")
+        if not raw:
+            return None
+        try:
+            return datetime.fromisoformat(raw.replace("Z", "+00:00")).astimezone(KST)
+        except Exception:
+            return None
+
+    _pattern_videos = []
+    for _video in public_videos:
+        _dt = _pattern_publish_dt(_video)
+        if _dt is None:
+            continue
+        _copy = dict(_video)
+        _copy["_pattern_dt"] = _dt
+        _copy["_analytics_ready"] = _video.get("video_id") in video_analytics
+        _pattern_videos.append(_copy)
+
+    _pattern_videos.sort(key=lambda x: x["_pattern_dt"], reverse=True)
+
+    if not _pattern_videos:
+        st.info("분석할 공개 영상이 없습니다.")
+    else:
+        _max_recent = min(50, len(_pattern_videos))
+        _choices = [x for x in [10, 20, 50] if x <= _max_recent]
+        if not _choices:
+            _choices = [_max_recent]
+
+        _recent_n = st.segmented_control(
+            "최근 영상 범위",
+            options=_choices,
+            default=_choices[0],
+            format_func=lambda x: f"최근 {x}개",
+            key="v66_recent_video_count",
+        )
+        if not _recent_n:
+            _recent_n = _choices[0]
+
+        _recent = _pattern_videos[: int(_recent_n)]
+        _recent_analytics = [v for v in _recent if v.get("_analytics_ready")]
+
+        st.caption(
+            f"최근 업로드 {len(_recent)}개 기준 · "
+            f"Analytics 확인 가능 {len(_recent_analytics)}개"
+        )
+
+        _recent_views = [int(v.get("views", 0) or 0) for v in _recent]
+        _views_avg = sum(_recent_views) / len(_recent_views) if _recent_views else 0
+        _views_median = float(pd.Series(_recent_views).median()) if _recent_views else 0
+        _best_video = max(_recent, key=lambda v: int(v.get("views", 0) or 0))
+
+        _m1, _m2, _m3 = st.columns(3)
+        _m1.metric("평균 조회수", f"{_views_avg:,.0f}회")
+        _m2.metric("중앙 조회수", f"{_views_median:,.0f}회")
+        _m3.metric("최고 조회수", f"{int(_best_video.get('views', 0) or 0):,}회")
+        st.caption(f"최고 영상: {_best_video.get('title', '제목 없음')}")
+
+        if _recent_analytics:
+            _ret_avg = sum(float(v.get("avg_percentage", 0) or 0) for v in _recent_analytics) / len(_recent_analytics)
+            _like_avg = sum(float(v.get("like_rate", 0) or 0) for v in _recent_analytics) / len(_recent_analytics)
+            _sub_avg = sum(float(v.get("sub_conversion_rate", 0) or 0) for v in _recent_analytics) / len(_recent_analytics)
+
+            _a1, _a2, _a3 = st.columns(3)
+            _a1.metric("평균 시청률", f"{_ret_avg:.1f}%")
+            _a2.metric("평균 좋아요율", f"{_like_avg:.2f}%")
+            _a3.metric("평균 구독전환율", f"{_sub_avg:.3f}%")
+        else:
+            st.caption("⏳ 최근 영상의 Analytics가 아직 충분히 집계되지 않았습니다.")
+
+        st.divider()
+        st.markdown("### 📅 요일별 성과")
+        st.caption(
+            "현재 앱 시간대(KST)의 업로드 요일 기준입니다. "
+            "표본이 1개뿐인 요일은 패턴으로 단정하지 않습니다."
+        )
+
+        _weekday_order = ["월", "화", "수", "목", "금", "토", "일"]
+        _weekday_rows = []
+        for _wd in _weekday_order:
+            _group = [v for v in _recent if _weekday_order[v["_pattern_dt"].weekday()] == _wd]
+            if not _group:
+                continue
+            _views = [int(v.get("views", 0) or 0) for v in _group]
+            _ready = [v for v in _group if v.get("_analytics_ready")]
+            _weekday_rows.append({
+                "요일": f"{_wd}요일",
+                "영상 수": len(_group),
+                "평균 조회수": round(sum(_views) / len(_views)),
+                "중앙 조회수": round(float(pd.Series(_views).median())),
+                "평균 시청률": (
+                    round(sum(float(v.get("avg_percentage", 0) or 0) for v in _ready) / len(_ready), 1)
+                    if _ready else None
+                ),
+                "판단": "비교 가능" if len(_group) >= 2 else "표본 부족",
+            })
+
+        if _weekday_rows:
+            _weekday_df = pd.DataFrame(_weekday_rows)
+            st.dataframe(_weekday_df, hide_index=True, use_container_width=True)
+            _weekday_chart = _weekday_df[_weekday_df["영상 수"] >= 2][["요일", "평균 조회수"]]
+            if not _weekday_chart.empty:
+                st.bar_chart(
+                    _weekday_chart.set_index("요일"),
+                    use_container_width=True,
+                    height=260,
+                )
+            else:
+                st.caption("⏳ 요일별 비교를 하기에는 아직 표본이 부족합니다.")
+
+        st.divider()
+        st.markdown("### 🕒 업로드 시간대별 성과")
+        st.caption(
+            "현재 앱 시간대(KST) 기준입니다. "
+            "업로드 수가 적은 시간대는 '표본 부족'으로 구분합니다."
+        )
+
+        def _time_band(hour):
+            if 0 <= hour < 6:
+                return "새벽 00~05시"
+            if 6 <= hour < 12:
+                return "오전 06~11시"
+            if 12 <= hour < 18:
+                return "오후 12~17시"
+            return "저녁 18~23시"
+
+        _band_order = ["새벽 00~05시", "오전 06~11시", "오후 12~17시", "저녁 18~23시"]
+        _band_rows = []
+        for _band in _band_order:
+            _group = [v for v in _recent if _time_band(v["_pattern_dt"].hour) == _band]
+            if not _group:
+                continue
+            _views = [int(v.get("views", 0) or 0) for v in _group]
+            _ready = [v for v in _group if v.get("_analytics_ready")]
+            _band_rows.append({
+                "시간대": _band,
+                "영상 수": len(_group),
+                "평균 조회수": round(sum(_views) / len(_views)),
+                "중앙 조회수": round(float(pd.Series(_views).median())),
+                "평균 시청률": (
+                    round(sum(float(v.get("avg_percentage", 0) or 0) for v in _ready) / len(_ready), 1)
+                    if _ready else None
+                ),
+                "판단": "비교 가능" if len(_group) >= 2 else "표본 부족",
+            })
+
+        if _band_rows:
+            _band_df = pd.DataFrame(_band_rows)
+            st.dataframe(_band_df, hide_index=True, use_container_width=True)
+            _band_chart = _band_df[_band_df["영상 수"] >= 2][["시간대", "평균 조회수"]]
+            if not _band_chart.empty:
+                st.bar_chart(
+                    _band_chart.set_index("시간대"),
+                    use_container_width=True,
+                    height=260,
+                )
+            else:
+                st.caption("⏳ 시간대별 비교를 하기에는 아직 표본이 부족합니다.")
+
+        st.divider()
+        st.markdown("### 🏷️ 소재 · 주제별 패턴")
+        st.info(
+            "제목만 보고 소재를 AI처럼 추정하지 않습니다. "
+            "V6.7 운영에서 사용자가 영상 태그/주제를 기록할 수 있게 만든 뒤, "
+            "그 실제 태그를 이 화면과 자동 연결합니다."
+        )
+        st.caption(
+            "즉 주제 패턴 화면의 자리는 준비하되, 근거 없는 자동 분류는 하지 않습니다."
+        )
+
+    st.divider()
+
+
 if page == "📈 성장 분석":
     # =========================================================
     # 20. 자동 성과 리포트 V6
@@ -2745,7 +2927,7 @@ if page == "📈 성장 분석":
 
         st.markdown("### 🔬 영상별 성과 비교")
         st.caption(
-            "한 줄에는 현재 성과만 표시합니다. 영상을 누르면 채널 기준선과 D+N 실제 성장 데이터를 확인할 수 있습니다."
+            "제목 검색 · 기간 · 성장상태 · 정렬로 영상을 찾고, 선택한 영상 1개만 상세 분석합니다."
         )
         st.caption(
             "※ 이 화면은 실제 수치 비교만 표시합니다. 원인 판단과 개선 메모는 운영(V6.7)에서 사용자가 직접 기록합니다."
@@ -2991,7 +3173,204 @@ if page == "📈 성장 분석":
 
         st.divider()
 
-        for rank,v in enumerate(ordered,start=1):
+        # ---------------------------------------------------------
+        # V6.6.1 — 영상별 성과 비교 검색 / 필터 / 정렬 / 단일 선택
+        # 영상이 수백 개가 되어도 전체 expander를 만들지 않고,
+        # 원하는 영상 1개만 찾아 상세를 표시합니다.
+        # ---------------------------------------------------------
+        st.markdown("#### 🔎 비교할 영상 찾기")
+
+        _filter_search = st.text_input(
+            "영상 제목 검색",
+            placeholder="제목 일부를 입력하세요",
+            key="v661_compare_search",
+        ).strip().lower()
+
+        _fc1, _fc2, _fc3 = st.columns(3)
+        with _fc1:
+            _filter_period = st.selectbox(
+                "기간",
+                ["전체", "최근 7일", "최근 30일", "최근 90일"],
+                key="v661_compare_period",
+            )
+        with _fc2:
+            _filter_state = st.selectbox(
+                "성장 상태",
+                [
+                    "전체",
+                    "🚀 급상승",
+                    "🔥 재상승",
+                    "↗ 상승",
+                    "→ 유지",
+                    "↘ 하락",
+                    "💤 정체",
+                    "⏳ 데이터 축적 중",
+                ],
+                key="v661_compare_state",
+            )
+        with _fc3:
+            _filter_sort = st.selectbox(
+                "정렬",
+                ["최신순", "조회수순", "성장속도순", "동일 나이 순위순"],
+                key="v661_compare_sort",
+            )
+
+        def _compare_filter_meta(_video):
+            _raw = _video.get("published_raw")
+            _published_dt = None
+            if _raw:
+                try:
+                    _published_dt = datetime.fromisoformat(
+                        _raw.replace("Z", "+00:00")
+                    ).astimezone(KST)
+                except Exception:
+                    pass
+
+            _comp_meta = _comparison_for(_video)
+            _snap_rows = _snapshot_by_video.get(_video.get("video_id"), [])
+            _now = datetime.now(timezone.utc)
+            _snap_state = (
+                _snapshot_growth_state(_video, _snap_rows, _now)
+                if _snapshot_fetch.get("ok")
+                else None
+            )
+            _snap_event = (
+                _snapshot_special_event(_video, _snap_state, _snap_rows, _now)
+                if _snap_state
+                else {"event": None, "label": None}
+            )
+
+            _state_label = (
+                _snap_state.get("state")
+                if _snap_state
+                else "⏳ 데이터 축적 중"
+            )
+            _event_label = _snap_event.get("label")
+            _velocity = (
+                float(_snap_state.get("recent_velocity") or 0)
+                if _snap_state
+                else 0.0
+            )
+
+            return {
+                "video": _video,
+                "published_dt": _published_dt,
+                "comp": _comp_meta,
+                "state": _state_label,
+                "event": _event_label,
+                "velocity": _velocity,
+            }
+
+        _compare_items = [_compare_filter_meta(_v) for _v in ordered]
+
+        _days_limit = {
+            "최근 7일": 7,
+            "최근 30일": 30,
+            "최근 90일": 90,
+        }.get(_filter_period)
+
+        _filtered_items = []
+        for _item in _compare_items:
+            _video = _item["video"]
+
+            if _filter_search and _filter_search not in str(
+                _video.get("title", "")
+            ).lower():
+                continue
+
+            if _days_limit is not None:
+                _pdt = _item.get("published_dt")
+                if _pdt is None:
+                    continue
+                _age_days = (datetime.now(KST).date() - _pdt.date()).days
+                if _age_days < 0 or _age_days > _days_limit:
+                    continue
+
+            if _filter_state != "전체":
+                if _filter_state in ("🚀 급상승", "🔥 재상승"):
+                    if _item.get("event") != _filter_state:
+                        continue
+                elif _item.get("state") != _filter_state:
+                    continue
+
+            _filtered_items.append(_item)
+
+        if _filter_sort == "최신순":
+            _filtered_items.sort(
+                key=lambda x: x.get("published_dt") or datetime.min.replace(tzinfo=KST),
+                reverse=True,
+            )
+        elif _filter_sort == "조회수순":
+            _filtered_items.sort(
+                key=lambda x: int(x["video"].get("views", 0) or 0),
+                reverse=True,
+            )
+        elif _filter_sort == "성장속도순":
+            _filtered_items.sort(
+                key=lambda x: x.get("velocity", 0),
+                reverse=True,
+            )
+        else:
+            _filtered_items.sort(
+                key=lambda x: (
+                    (x.get("comp") or {}).get("rank")
+                    if (x.get("comp") or {}).get("rank") is not None
+                    else 10**9
+                )
+            )
+
+        st.caption(
+            f"조건에 맞는 영상 {len(_filtered_items)}개 / 전체 분석 대상 {len(ordered)}개"
+        )
+
+        if not _filtered_items:
+            st.info("조건에 맞는 영상이 없습니다. 검색어나 필터를 바꿔주세요.")
+            _selected_pairs = []
+        else:
+            _option_lookup = {}
+            _option_labels = []
+            for _item in _filtered_items:
+                _video = _item["video"]
+                _pdt = _item.get("published_dt")
+                _date_text = _pdt.strftime("%Y.%m.%d") if _pdt else "날짜 없음"
+                _status_bits = []
+                if _item.get("event"):
+                    _status_bits.append(_item["event"])
+                if _item.get("state"):
+                    _status_bits.append(_item["state"])
+                _status_text = " · ".join(_status_bits)
+
+                _label = (
+                    f"{_date_text} | {_video.get('title', '제목 없음')} "
+                    f"| {int(_video.get('views', 0) or 0):,}회"
+                )
+                if _status_text:
+                    _label += f" | {_status_text}"
+
+                # 제목이 같아도 video_id로 내부 식별
+                _key = f"{_label} [{_video.get('video_id')}]"
+                _option_lookup[_key] = _item
+                _option_labels.append(_key)
+
+            _selected_key = st.selectbox(
+                "상세 분석할 영상",
+                options=_option_labels,
+                format_func=lambda x: x.rsplit(" [", 1)[0],
+                key="v661_compare_selected_video",
+            )
+            _selected_item = _option_lookup[_selected_key]
+            _selected_video = _selected_item["video"]
+            _original_rank = next(
+                (
+                    _idx
+                    for _idx, _ov in enumerate(ordered, start=1)
+                    if _ov.get("video_id") == _selected_video.get("video_id")
+                ),
+                1,
+            )
+            _selected_pairs = [(_original_rank, _selected_video)]
+
+        for rank,v in _selected_pairs:
             published_text = "업로드일 확인 불가"
             age_text = ""
             raw = v.get("published_raw")
