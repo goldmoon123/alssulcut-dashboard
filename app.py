@@ -251,6 +251,15 @@ def _nearest_snapshot_at_or_before(rows, target, max_gap_hours):
     return candidate
 
 
+def _snapshot_activity_floor(current_views):
+    """
+    아주 작은 조회수 변화가 급격한 비율 변화로 과대평가되지 않게 하는 최소 활동량.
+    채널 공통 고정값 하나가 아니라 현재 누적 조회수에 따라 완만하게 조정합니다.
+    """
+    current_views = max(int(current_views or 0), 0)
+    return max(3, min(50, int(round(current_views * 0.0001))))
+
+
 def _snapshot_growth_state(video, snapshot_rows, now_utc=None):
     """
     V6.5-1 기본 성장상태.
@@ -318,7 +327,7 @@ def _snapshot_growth_state(video, snapshot_rows, now_utc=None):
 
     current_views = max(int(latest["view_count"]), 0)
     # 아주 작은 변화(예: 2→4)를 상승으로 과대평가하지 않기 위한 최소 활동량.
-    activity_floor = max(3, min(50, int(round(current_views * 0.0001))))
+    activity_floor = _snapshot_activity_floor(current_views)
     if recent_gain + previous_gain <= activity_floor:
         base["state"] = "💤 정체"
     elif previous_velocity <= 0:
@@ -345,6 +354,95 @@ def _snapshot_growth_state(video, snapshot_rows, now_utc=None):
         base["confidence"] = "낮음"
 
     return base
+
+
+def _snapshot_special_event(video, snapshot_state, snapshot_rows, now_utc=None):
+    """
+    V6.5-2 특별 성장 이벤트 V1.
+    기본 성장상태와 분리해서 🚀 급상승 / 🔥 재상승만 감지합니다.
+
+    원칙
+    - 비율 하나만으로 판정하지 않음
+    - 절대 증가량(활동량 기준)을 함께 확인
+    - 신뢰도 낮음이면 특별 이벤트를 확정하지 않음
+    - 오래된 영상의 재상승은 직전 구간이 거의 정체였는지 추가 확인
+    """
+    result = {
+        "event": None,
+        "label": None,
+        "confidence": "낮음",
+        "reason": None,
+    }
+
+    if not snapshot_state or snapshot_state.get("recent_gain") is None:
+        return result
+
+    if snapshot_state.get("confidence") == "낮음":
+        result["reason"] = "비교 구간의 스냅샷이 아직 충분하지 않습니다."
+        return result
+
+    rows = snapshot_rows or []
+    if not rows:
+        return result
+
+    now_utc = now_utc or datetime.now(timezone.utc)
+    published = _parse_utc(video.get("published_raw"))
+    age_hours = (
+        max((now_utc - published).total_seconds() / 3600, 0)
+        if published else 0
+    )
+
+    recent_gain = max(int(snapshot_state.get("recent_gain") or 0), 0)
+    previous_gain = max(int(snapshot_state.get("previous_gain") or 0), 0)
+    recent_velocity = max(float(snapshot_state.get("recent_velocity") or 0), 0.0)
+    previous_velocity = max(float(snapshot_state.get("previous_velocity") or 0), 0.0)
+    ratio = snapshot_state.get("ratio")
+    window_hours = int(snapshot_state.get("window_hours") or 1)
+    current_views = max(int(rows[-1].get("view_count") or 0), 0)
+
+    activity_floor = _snapshot_activity_floor(current_views)
+    meaningful_gain = max(activity_floor * 4, 10)
+
+    # 🔥 재상승: 업로드 후 3일 이상 지난 영상이 직전 구간에는 거의 멈췄다가
+    # 최근 구간에서 의미 있는 증가로 다시 살아난 경우.
+    if age_hours >= 72:
+        was_quiet = previous_gain <= activity_floor
+        woke_up = recent_gain >= meaningful_gain
+        velocity_jump = (
+            recent_velocity > 0
+            if previous_velocity <= 0
+            else recent_velocity >= previous_velocity * 3.0
+        )
+        if was_quiet and woke_up and velocity_jump:
+            result.update({
+                "event": "resurge",
+                "label": "🔥 재상승",
+                "confidence": snapshot_state.get("confidence", "보통"),
+                "reason": (
+                    f"직전 {window_hours}시간 +{previous_gain:,}회에서 "
+                    f"최근 {window_hours}시간 +{recent_gain:,}회로 다시 증가"
+                ),
+            })
+            return result
+
+    # 🚀 급상승: 현재 기본상태가 '상승'이고,
+    # 직전 대비 속도 2배 이상 + 최소 활동량을 충분히 넘긴 경우.
+    if snapshot_state.get("state") == "↗ 상승":
+        strong_ratio = ratio is not None and ratio >= 2.0
+        strong_gain = recent_gain >= meaningful_gain
+        if strong_ratio and strong_gain:
+            result.update({
+                "event": "surge",
+                "label": "🚀 급상승",
+                "confidence": snapshot_state.get("confidence", "보통"),
+                "reason": (
+                    f"최근 {window_hours}시간 속도가 직전 구간의 {ratio:.2f}배 · "
+                    f"최근 +{recent_gain:,}회"
+                ),
+            })
+
+    return result
+
 
 # HTTP 허용은 localhost 개발 때만 사용
 if REDIRECT_URI.startswith("http://localhost"):
@@ -2841,13 +2939,23 @@ if page == "📈 성장 분석":
                     pass
 
             _comp = _comparison_for(v)
+            _snapshot_rows_for_video = _snapshot_by_video.get(v.get("video_id"), [])
+            _snapshot_now = datetime.now(timezone.utc)
             _snapshot_state = _snapshot_growth_state(
                 v,
-                _snapshot_by_video.get(v.get("video_id"), []),
-                datetime.now(timezone.utc),
+                _snapshot_rows_for_video,
+                _snapshot_now,
             ) if _snapshot_fetch.get("ok") else None
+            _snapshot_event = _snapshot_special_event(
+                v,
+                _snapshot_state,
+                _snapshot_rows_for_video,
+                _snapshot_now,
+            ) if _snapshot_state else {"event": None, "label": None, "confidence": "낮음", "reason": None}
+
             _daily_trend = _daily_analytics_trend(v)
             _state = _snapshot_state["state"] if _snapshot_state else f"📅 {_daily_trend}"
+            _event_text = f" | {_snapshot_event['label']}" if _snapshot_event.get("label") else ""
 
             if _comp and _comp["sample"] >= 5:
                 _same_age_text = (
@@ -2860,7 +2968,7 @@ if page == "📈 성장 분석":
 
             summary = (
                 f"📅 {published_text}{age_text} | "
-                f"조회수 {v['views']:,} | {_same_age_text} | {_state}"
+                f"조회수 {v['views']:,} | {_same_age_text} | {_state}{_event_text}"
             )
 
             with st.expander(f"{rank}. {v['title']}  |  {summary}"):
@@ -2915,6 +3023,18 @@ if page == "📈 성장 분석":
                         st.caption("비교 가능한 시간대의 스냅샷이 더 쌓이면 자동으로 판정합니다.")
                     if _snapshot_state.get("note"):
                         st.caption(f"※ {_snapshot_state['note']}")
+
+                    if _snapshot_event.get("label"):
+                        st.markdown(f"**{_snapshot_event['label']}**")
+                        st.caption(
+                            f"{_snapshot_event['reason']} · "
+                            f"이벤트 신뢰도 {_snapshot_event['confidence']}"
+                        )
+                    else:
+                        st.caption(
+                            "특별 이벤트(🚀 급상승 / 🔥 재상승)는 "
+                            "충분한 속도 변화와 활동량이 확인될 때만 표시합니다."
+                        )
                 elif _snapshot_fetch.get("ok"):
                     if len(_snapshot_fetch.get("rows", [])) == 0:
                         st.caption(
