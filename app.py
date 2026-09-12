@@ -4741,23 +4741,61 @@ if page == "🧪 운영":
             if _export_experiments.get("ok") else []
         )
 
+        def _excel_kst_datetime(value, date_only=False):
+            """Supabase/YouTube UTC ISO 값을 사용자용 KST 문자열로 변환."""
+            if not value:
+                return ""
+            try:
+                _dt = datetime.fromisoformat(
+                    str(value).replace("Z", "+00:00")
+                )
+                if _dt.tzinfo is None:
+                    _dt = _dt.replace(tzinfo=timezone.utc)
+                _dt = _dt.astimezone(KST)
+                return (
+                    _dt.strftime("%Y-%m-%d")
+                    if date_only
+                    else _dt.strftime("%Y-%m-%d %H:%M")
+                )
+            except Exception:
+                return str(value)
+
+        def _excel_date(value):
+            if not value:
+                return ""
+            try:
+                return datetime.fromisoformat(str(value)).strftime("%Y-%m-%d")
+            except Exception:
+                return str(value)
+
         # -------------------------------------------------
-        # Excel은 데이터가 0건이어도 "틀"을 항상 유지
+        # 1) 목표 — 실제 Shorts Scope 입력 항목과 1:1 대응
         # -------------------------------------------------
         _goal_columns = [
-            "목표명",
-            "목표값",
-            "단위",
-            "시작일",
-            "종료일",
-            "상태",
-            "메모",
-            "생성일",
-            "수정일",
+            "주간 업로드 목표",
+            "영상 1개 목표 조회수",
+            "목표 메모",
+            "마지막 수정",
         ]
 
+        _goal_export_rows = []
+        for _row in _goal_rows:
+            _goal_export_rows.append({
+                "주간 업로드 목표": int(_row.get("weekly_upload_goal") or 0),
+                "영상 1개 목표 조회수": int(_row.get("target_views") or 0),
+                "목표 메모": _row.get("goal_note") or "",
+                "마지막 수정": _excel_kst_datetime(_row.get("updated_at")),
+            })
+
+        _goal_df = pd.DataFrame(
+            _goal_export_rows,
+            columns=_goal_columns,
+        )
+
+        # -------------------------------------------------
+        # 2) 영상 기록 — 사람이 읽는 필드 우선, 내부 ID는 맨 뒤
+        # -------------------------------------------------
         _note_columns = [
-            "영상 ID",
             "제목",
             "업로드일",
             "현재 조회수",
@@ -4771,20 +4809,8 @@ if page == "🧪 운영":
             "잘된 점",
             "아쉬운 점 / 개선점",
             "다음에 반복하거나 바꿀 것",
-            "출처",
-            "수정일",
-        ]
-
-        _experiment_columns = [
-            "실험 ID",
-            "실험명",
-            "가설",
-            "변경 내용",
-            "시작일",
-            "상태",
-            "결과 메모",
-            "생성일",
-            "수정일",
+            "마지막 수정",
+            "영상 ID",
         ]
 
         _video_lookup_export = {
@@ -4792,31 +4818,11 @@ if page == "🧪 운영":
             for v in public_videos
         }
 
-        # 목표
-        _goal_export_rows = []
-        for _row in _goal_rows:
-            _goal_export_rows.append({
-                "목표명": _row.get("title") or _row.get("goal_name") or "",
-                "목표값": _row.get("target_value") if _row.get("target_value") is not None else "",
-                "단위": _row.get("unit") or "",
-                "시작일": _row.get("start_date") or "",
-                "종료일": _row.get("end_date") or "",
-                "상태": _row.get("status") or "",
-                "메모": _row.get("note") or _row.get("memo") or "",
-                "생성일": _row.get("created_at") or "",
-                "수정일": _row.get("updated_at") or "",
-            })
-
-        _goal_df = pd.DataFrame(
-            _goal_export_rows,
-            columns=_goal_columns,
-        )
-
-        # 영상 기록
         _note_export_rows = []
         for _row in _note_rows:
             _vid = _row.get("video_id")
             _video = _video_lookup_export.get(_vid, {})
+
             _tags = _row.get("tags") or []
             if isinstance(_tags, list):
                 _tags = ", ".join(str(x) for x in _tags)
@@ -4824,9 +4830,11 @@ if page == "🧪 운영":
                 _tags = str(_tags or "")
 
             _note_export_rows.append({
-                "영상 ID": _vid or "",
                 "제목": _row.get("title") or _video.get("title") or "",
-                "업로드일": _video.get("published_raw") or "",
+                "업로드일": _excel_kst_datetime(
+                    _video.get("published_raw"),
+                    date_only=True,
+                ),
                 "현재 조회수": int(_video.get("views", 0) or 0),
                 "주제": _row.get("topic") or "",
                 "태그": _tags,
@@ -4838,8 +4846,8 @@ if page == "🧪 운영":
                 "잘된 점": _row.get("what_worked_user") or "",
                 "아쉬운 점 / 개선점": _row.get("what_failed_user") or "",
                 "다음에 반복하거나 바꿀 것": _row.get("next_use_user") or "",
-                "출처": _row.get("source") or "user",
-                "수정일": _row.get("updated_at") or "",
+                "마지막 수정": _excel_kst_datetime(_row.get("updated_at")),
+                "영상 ID": _vid or "",
             })
 
         _note_df = pd.DataFrame(
@@ -4847,19 +4855,33 @@ if page == "🧪 운영":
             columns=_note_columns,
         )
 
-        # 실험 기록
+        # -------------------------------------------------
+        # 3) 실험 기록 — 운영 판단에 필요한 순서로 정리
+        # -------------------------------------------------
+        _experiment_columns = [
+            "실험명",
+            "가설",
+            "변경 내용",
+            "시작일",
+            "상태",
+            "결과 메모",
+            "생성일",
+            "마지막 수정",
+            "실험 ID",
+        ]
+
         _exp_export_rows = []
         for _row in _exp_rows:
             _exp_export_rows.append({
-                "실험 ID": _row.get("id") or "",
                 "실험명": _row.get("title") or "",
                 "가설": _row.get("hypothesis") or "",
                 "변경 내용": _row.get("change_made") or "",
-                "시작일": _row.get("start_date") or "",
+                "시작일": _excel_date(_row.get("start_date")),
                 "상태": _row.get("status") or "",
                 "결과 메모": _row.get("result_note") or "",
-                "생성일": _row.get("created_at") or "",
-                "수정일": _row.get("updated_at") or "",
+                "생성일": _excel_kst_datetime(_row.get("created_at")),
+                "마지막 수정": _excel_kst_datetime(_row.get("updated_at")),
+                "실험 ID": _row.get("id") or "",
             })
 
         _exp_df = pd.DataFrame(
@@ -4867,87 +4889,97 @@ if page == "🧪 운영":
             columns=_experiment_columns,
         )
 
-        with pd.ExcelWriter(_buf, engine="openpyxl") as _writer:
-            _summary = pd.DataFrame([
-                {"항목": "채널", "값": channel_info.get("channel_name", "")},
-                {"항목": "목표 기록 수", "값": len(_goal_df)},
-                {"항목": "영상 기록 수", "값": len(_note_df)},
-                {"항목": "실험 기록 수", "값": len(_exp_df)},
-                {"항목": "생성 시각", "값": datetime.now(KST).strftime("%Y-%m-%d %H:%M KST")},
-            ])
+        # -------------------------------------------------
+        # 4) 요약
+        # -------------------------------------------------
+        _summary = pd.DataFrame([
+            {"항목": "채널", "값": channel_info.get("channel_name", "")},
+            {"항목": "주간 업로드 목표", "값": (
+                int(_goal_rows[0].get("weekly_upload_goal") or 0)
+                if _goal_rows else ""
+            )},
+            {"항목": "영상 1개 목표 조회수", "값": (
+                int(_goal_rows[0].get("target_views") or 0)
+                if _goal_rows else ""
+            )},
+            {"항목": "영상 기록 수", "값": len(_note_df)},
+            {"항목": "실험 기록 수", "값": len(_exp_df)},
+            {"항목": "파일 생성 시각", "값": datetime.now(KST).strftime("%Y-%m-%d %H:%M KST")},
+        ])
 
+        with pd.ExcelWriter(_buf, engine="openpyxl") as _writer:
             _summary.to_excel(_writer, sheet_name="요약", index=False)
             _goal_df.to_excel(_writer, sheet_name="목표", index=False)
             _note_df.to_excel(_writer, sheet_name="영상 기록", index=False)
             _exp_df.to_excel(_writer, sheet_name="실험 기록", index=False)
 
-            # 보기 편한 기본 서식
             _column_widths = {
                 "요약": {
-                    "A": 18,
+                    "A": 24,
                     "B": 34,
                 },
                 "목표": {
-                    "A": 28,
-                    "B": 14,
-                    "C": 12,
-                    "D": 14,
-                    "E": 14,
-                    "F": 14,
-                    "G": 36,
-                    "H": 22,
-                    "I": 22,
+                    "A": 20,
+                    "B": 24,
+                    "C": 54,
+                    "D": 20,
                 },
                 "영상 기록": {
-                    "A": 18,
-                    "B": 42,
-                    "C": 22,
-                    "D": 14,
-                    "E": 22,
-                    "F": 24,
-                    "G": 36,
-                    "H": 30,
-                    "I": 18,
-                    "J": 26,
+                    "A": 44,
+                    "B": 14,
+                    "C": 14,
+                    "D": 22,
+                    "E": 24,
+                    "F": 38,
+                    "G": 34,
+                    "H": 18,
+                    "I": 28,
+                    "J": 42,
                     "K": 42,
                     "L": 42,
                     "M": 42,
-                    "N": 42,
-                    "O": 12,
-                    "P": 22,
+                    "N": 20,
+                    "O": 18,
                 },
                 "실험 기록": {
-                    "A": 12,
-                    "B": 32,
-                    "C": 42,
-                    "D": 42,
+                    "A": 32,
+                    "B": 44,
+                    "C": 44,
+                    "D": 14,
                     "E": 14,
-                    "F": 14,
-                    "G": 42,
-                    "H": 22,
-                    "I": 22,
+                    "F": 42,
+                    "G": 20,
+                    "H": 20,
+                    "I": 12,
                 },
             }
 
             for _ws in _writer.book.worksheets:
                 _ws.freeze_panes = "A2"
-                _ws.auto_filter.ref = _ws.dimensions
 
-                # 헤더 굵게 + 행 높이
+                # 헤더
                 for _cell in _ws[1]:
                     _cell.font = _cell.font.copy(bold=True)
-                _ws.row_dimensions[1].height = 22
+                    _cell.alignment = _cell.alignment.copy(
+                        vertical="center",
+                    )
+                _ws.row_dimensions[1].height = 24
 
+                # 열 너비
                 for _col, _width in _column_widths.get(_ws.title, {}).items():
                     _ws.column_dimensions[_col].width = _width
 
-                # 텍스트가 긴 기록은 줄바꿈
+                # 데이터 셀
                 for _row in _ws.iter_rows(min_row=2):
                     for _cell in _row:
                         _cell.alignment = _cell.alignment.copy(
                             vertical="top",
                             wrap_text=True,
                         )
+
+                # 데이터가 있을 때만 필터
+                if _ws.max_row >= 2:
+                    _ws.auto_filter.ref = _ws.dimensions
 
         _buf.seek(0)
         return _buf.getvalue()
