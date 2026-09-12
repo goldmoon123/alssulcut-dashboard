@@ -1366,6 +1366,12 @@ st.markdown(
         color:#e9edf5!important; font-size:.9rem!important; font-weight:650!important;
     }
     section[data-testid="stSidebar"] input[type="radio"] { display:none!important; }
+    section[data-testid="stSidebar"] div[role="radiogroup"] label > div:first-child {
+        display:none!important;
+    }
+    section[data-testid="stSidebar"] div[role="radiogroup"] label {
+        grid-template-columns:1fr!important;
+    }
 
     .ss-side-brand { display:flex; align-items:center; gap:.65rem; padding:.15rem .25rem .95rem; }
     .ss-side-logo {
@@ -2462,16 +2468,16 @@ if page == "🏠 홈":
                 _badge_text = f"표본 {_best_band['count']}개" if "_best_band" in locals() else "실제 데이터"
 
             _insight_cards.append(
-                f"""
-                <div class="v76-insight">
-                    <div class="v76-insight-top">
-                        <div class="v76-insight-label">{_title}</div>
-                        <span class="v76-badge {_badge_cls}">{_badge_text}</span>
-                    </div>
-                    <div class="v76-insight-value">{_value}</div>
-                    <div class="v76-insight-desc">{_desc}</div>
-                </div>
-                """
+                (
+                    f'<div class="v76-insight">'
+                    f'<div class="v76-insight-top">'
+                    f'<div class="v76-insight-label">{_title}</div>'
+                    f'<span class="v76-badge {_badge_cls}">{_badge_text}</span>'
+                    f'</div>'
+                    f'<div class="v76-insight-value">{_value}</div>'
+                    f'<div class="v76-insight-desc">{_desc}</div>'
+                    f'</div>'
+                )
             )
         st.markdown('<div class="v76-insight-grid">' + "".join(_insight_cards) + '</div>', unsafe_allow_html=True)
 
@@ -2506,20 +2512,26 @@ if page == "🏠 홈":
             _thumb_html = f'<img class="v76-video-thumb" src="{_thumb}" alt="">' if _thumb else '<div class="v76-video-thumb"></div>'
 
             _video_cards.append(
-                f"""
-                <div class="v76-video-card">
-                    {_thumb_html}
-                    <div class="v76-video-body">
-                        <div class="v76-video-badges">
-                            <span class="v76-badge {_status_cls}">{_status_label}</span>
-                            <span class="v76-badge {_confidence_cls}">신뢰도 {_confidence}</span>
-                        </div>
-                        <div class="v76-video-title">{_title}</div>
-                        <div class="v76-video-meta"><span>{_item['published'].strftime('%m.%d %H:%M')}</span><span>{int(_v.get('views', 0) or 0):,}회</span></div>
-                        <div class="v76-video-meta"><span>현재 비교구간</span><span class="v76-video-gain">{_gain_text}</span></div>
-                    </div>
-                </div>
-                """
+                (
+                    f'<div class="v76-video-card">'
+                    f'{_thumb_html}'
+                    f'<div class="v76-video-body">'
+                    f'<div class="v76-video-badges">'
+                    f'<span class="v76-badge {_status_cls}">{_status_label}</span>'
+                    f'<span class="v76-badge {_confidence_cls}">신뢰도 {_confidence}</span>'
+                    f'</div>'
+                    f'<div class="v76-video-title">{_title}</div>'
+                    f'<div class="v76-video-meta">'
+                    f'<span>{_item["published"].strftime("%m.%d %H:%M")}</span>'
+                    f'<span>{int(_v.get("views", 0) or 0):,}회</span>'
+                    f'</div>'
+                    f'<div class="v76-video-meta">'
+                    f'<span>현재 비교구간</span>'
+                    f'<span class="v76-video-gain">{_gain_text}</span>'
+                    f'</div>'
+                    f'</div>'
+                    f'</div>'
+                )
             )
         st.markdown('<div class="v76-video-grid">' + "".join(_video_cards) + '</div>', unsafe_allow_html=True)
     else:
@@ -4107,13 +4119,19 @@ if page == "📊 채널 패턴":
                 _weekday_conf = "낮음" if _best_weekday["영상 수"] < 3 else "보통" if _best_weekday["영상 수"] < 6 else "높음"
                 _weekday_cls = "v76-warning" if _weekday_conf == "낮음" else "v76-info" if _weekday_conf == "보통" else "v76-positive"
                 _pattern_cards.append(
-                    f"""
-                    <div class="v76-insight">
-                        <div class="v76-insight-top"><div class="v76-insight-label">요일 관찰</div><span class="v76-badge {_weekday_cls}">신뢰도 {_weekday_conf}</span></div>
-                        <div class="v76-insight-value">{_best_weekday['요일']}</div>
-                        <div class="v76-insight-desc">현재 표본 중 평균 조회수 {_best_weekday['평균 조회수']:,}회로 가장 높음 · 표본 {_best_weekday['영상 수']}개</div>
-                    </div>
-                    """
+                    (
+                        f'<div class="v76-insight">'
+                        f'<div class="v76-insight-top">'
+                        f'<div class="v76-insight-label">요일 관찰</div>'
+                        f'<span class="v76-badge {_weekday_cls}">신뢰도 {_weekday_conf}</span>'
+                        f'</div>'
+                        f'<div class="v76-insight-value">{_best_weekday["요일"]}</div>'
+                        f'<div class="v76-insight-desc">'
+                        f'현재 표본 중 평균 조회수 {_best_weekday["평균 조회수"]:,}회로 가장 높음 · '
+                        f'표본 {_best_weekday["영상 수"]}개'
+                        f'</div>'
+                        f'</div>'
+                    )
                 )
 
             _band_compare = [row for row in _band_rows if row["영상 수"] >= 2]
@@ -4122,13 +4140,19 @@ if page == "📊 채널 패턴":
                 _band_conf = "낮음" if _best_band_row["영상 수"] < 3 else "보통" if _best_band_row["영상 수"] < 6 else "높음"
                 _band_cls = "v76-warning" if _band_conf == "낮음" else "v76-info" if _band_conf == "보통" else "v76-positive"
                 _pattern_cards.append(
-                    f"""
-                    <div class="v76-insight">
-                        <div class="v76-insight-top"><div class="v76-insight-label">시간대 관찰</div><span class="v76-badge {_band_cls}">신뢰도 {_band_conf}</span></div>
-                        <div class="v76-insight-value">{_best_band_row['시간대']}</div>
-                        <div class="v76-insight-desc">현재 표본 중 평균 조회수 {_best_band_row['평균 조회수']:,}회로 가장 높음 · 표본 {_best_band_row['영상 수']}개</div>
-                    </div>
-                    """
+                    (
+                        f'<div class="v76-insight">'
+                        f'<div class="v76-insight-top">'
+                        f'<div class="v76-insight-label">시간대 관찰</div>'
+                        f'<span class="v76-badge {_band_cls}">신뢰도 {_band_conf}</span>'
+                        f'</div>'
+                        f'<div class="v76-insight-value">{_best_band_row["시간대"]}</div>'
+                        f'<div class="v76-insight-desc">'
+                        f'현재 표본 중 평균 조회수 {_best_band_row["평균 조회수"]:,}회로 가장 높음 · '
+                        f'표본 {_best_band_row["영상 수"]}개'
+                        f'</div>'
+                        f'</div>'
+                    )
                 )
 
             if _pattern_cards:
@@ -4811,14 +4835,14 @@ if page == "📋 리포트":
             _ratio_text = f"중앙값 대비 ×{_vs_median:.1f}" if _vs_median is not None else "중앙값 비교 불가"
             _title = str(_v.get("title", "제목 없음")).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
             _top3_cards.append(
-                f"""
-                <div class="v76-rank-card">
-                    <div class="v76-rank-no">TOP {_idx}</div>
-                    <div class="v76-rank-title">{_title}</div>
-                    <div class="v76-rank-value">{_vv:,}회</div>
-                    <div class="v76-rank-meta">{_ratio_text} · {_dt.strftime('%m.%d')}</div>
-                </div>
-                """
+                (
+                    f'<div class="v76-rank-card">'
+                    f'<div class="v76-rank-no">TOP {_idx}</div>'
+                    f'<div class="v76-rank-title">{_title}</div>'
+                    f'<div class="v76-rank-value">{_vv:,}회</div>'
+                    f'<div class="v76-rank-meta">{_ratio_text} · {_dt.strftime("%m.%d")}</div>'
+                    f'</div>'
+                )
             )
 
         st.markdown("#### 이번 주 상위 영상")
