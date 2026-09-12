@@ -979,24 +979,378 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-st.title("📊 Shorts Scope")
+# =========================================================
+# V7.3 — Modern SaaS UI Design System
+# 기능 로직은 건드리지 않고 전체 시각 체계만 통일합니다.
+# =========================================================
+st.markdown(
+    """
+    <style>
+    :root {
+        --ss-bg: #f6f7fb;
+        --ss-surface: #ffffff;
+        --ss-surface-soft: #fafbfe;
+        --ss-text: #171923;
+        --ss-muted: #667085;
+        --ss-border: #e7e9f0;
+        --ss-primary: #ff4d5a;
+        --ss-primary-dark: #e83e4b;
+        --ss-shadow: 0 8px 24px rgba(20, 24, 35, 0.06);
+        --ss-radius: 16px;
+        --ss-radius-sm: 11px;
+    }
 
-st.write(
-    "YouTube Shorts 채널의 성과를 한눈에 확인하고 분석할 수 있는 대시보드입니다."
+    html, body, [class*="css"] {
+        font-family:
+            Inter, Pretendard, -apple-system, BlinkMacSystemFont,
+            "Segoe UI", "Noto Sans KR", sans-serif;
+    }
+
+    .stApp {
+        background: var(--ss-bg);
+        color: var(--ss-text);
+    }
+
+    .block-container {
+        max-width: 1440px;
+        padding-top: 2.1rem;
+        padding-bottom: 5rem;
+    }
+
+    /* 제목 */
+    h1, h2, h3 {
+        color: var(--ss-text) !important;
+        letter-spacing: -0.025em;
+    }
+    h1 {
+        font-size: 2.25rem !important;
+        font-weight: 800 !important;
+        line-height: 1.15 !important;
+    }
+    h2 {
+        font-size: 1.65rem !important;
+        font-weight: 750 !important;
+        margin-top: 1.35rem !important;
+    }
+    h3 {
+        font-size: 1.22rem !important;
+        font-weight: 700 !important;
+    }
+
+    .stCaption,
+    [data-testid="stCaptionContainer"],
+    [data-testid="stCaptionContainer"] p {
+        color: var(--ss-muted) !important;
+        line-height: 1.5 !important;
+    }
+
+    /* 상단 브랜드 카드 */
+    .ss-hero {
+        background:
+            radial-gradient(circle at 90% 15%, rgba(255,77,90,.15), transparent 34%),
+            linear-gradient(135deg, #ffffff 0%, #fbfbfe 100%);
+        border: 1px solid var(--ss-border);
+        border-radius: 22px;
+        padding: 1.55rem 1.7rem;
+        box-shadow: var(--ss-shadow);
+        margin-bottom: 1rem;
+    }
+    .ss-brand-row {
+        display: flex;
+        align-items: center;
+        gap: .7rem;
+        margin-bottom: .45rem;
+    }
+    .ss-logo {
+        width: 42px;
+        height: 42px;
+        display: grid;
+        place-items: center;
+        border-radius: 13px;
+        background: linear-gradient(135deg, #ff4d5a, #ff7a63);
+        color: white;
+        font-size: 1.2rem;
+        box-shadow: 0 7px 18px rgba(255,77,90,.22);
+    }
+    .ss-brand {
+        font-size: 1.42rem;
+        font-weight: 800;
+        letter-spacing: -.03em;
+    }
+    .ss-hero-title {
+        font-size: 1.08rem;
+        font-weight: 650;
+        color: #353a49;
+        margin-top: .2rem;
+    }
+    .ss-hero-sub {
+        color: var(--ss-muted);
+        font-size: .92rem;
+        margin-top: .35rem;
+    }
+    .ss-chip-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: .45rem;
+        margin-top: .9rem;
+    }
+    .ss-chip {
+        padding: .34rem .62rem;
+        border: 1px solid var(--ss-border);
+        border-radius: 999px;
+        background: rgba(255,255,255,.86);
+        color: #444b5f;
+        font-size: .78rem;
+        font-weight: 600;
+    }
+
+    /* Metric 카드 */
+    [data-testid="stMetric"] {
+        background: var(--ss-surface);
+        border: 1px solid var(--ss-border);
+        border-radius: var(--ss-radius);
+        padding: 1rem 1.05rem !important;
+        min-height: 112px;
+        box-shadow: 0 4px 14px rgba(20,24,35,.035);
+        transition: transform .15s ease, box-shadow .15s ease;
+    }
+    [data-testid="stMetric"]:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 8px 22px rgba(20,24,35,.07);
+    }
+    [data-testid="stMetricLabel"] p {
+        color: var(--ss-muted) !important;
+        font-size: .84rem !important;
+        font-weight: 650 !important;
+    }
+    [data-testid="stMetricValue"] {
+        color: var(--ss-text) !important;
+        font-weight: 780 !important;
+    }
+
+    /* 버튼 */
+    .stButton > button,
+    [data-testid="stFormSubmitButton"] > button,
+    .stDownloadButton > button,
+    [data-testid="stLinkButton"] a {
+        min-height: 42px;
+        border-radius: 11px !important;
+        border: 1px solid #dfe2ea !important;
+        font-weight: 700 !important;
+        box-shadow: none !important;
+        transition: transform .12s ease, box-shadow .12s ease, border-color .12s ease;
+    }
+    .stButton > button:hover,
+    [data-testid="stFormSubmitButton"] > button:hover,
+    .stDownloadButton > button:hover,
+    [data-testid="stLinkButton"] a:hover {
+        transform: translateY(-1px);
+        border-color: #cfd3dd !important;
+        box-shadow: 0 6px 14px rgba(20,24,35,.07) !important;
+    }
+    button[kind="primary"],
+    [data-testid="stFormSubmitButton"] button[kind="primary"] {
+        background: linear-gradient(135deg, var(--ss-primary), #ff6a62) !important;
+        border-color: transparent !important;
+        color: white !important;
+    }
+
+    /* 입력 */
+    [data-baseweb="input"] > div,
+    [data-baseweb="textarea"] > div,
+    [data-baseweb="select"] > div,
+    [data-baseweb="base-input"] {
+        background: var(--ss-surface) !important;
+        border-radius: 11px !important;
+        border-color: #dfe2ea !important;
+    }
+    [data-baseweb="select"] > div:hover,
+    [data-baseweb="input"] > div:hover {
+        border-color: #c7cbd6 !important;
+    }
+
+    /* 라디오 메뉴: 탭형 네비게이션 */
+    div[role="radiogroup"] {
+        gap: .45rem !important;
+        flex-wrap: wrap !important;
+    }
+    div[role="radiogroup"] label {
+        background: var(--ss-surface);
+        border: 1px solid var(--ss-border);
+        border-radius: 999px;
+        padding: .2rem .35rem;
+        min-height: 38px;
+        transition: background .12s ease, border-color .12s ease;
+    }
+    div[role="radiogroup"] label:hover {
+        border-color: #cfd3dd;
+        background: #fbfbfd;
+    }
+    div[role="radiogroup"] label p {
+        font-size: .88rem !important;
+        font-weight: 700 !important;
+    }
+
+    /* 탭 */
+    [data-baseweb="tab-list"] {
+        background: #eef0f5;
+        padding: .28rem;
+        border-radius: 12px;
+        gap: .2rem !important;
+    }
+    [data-baseweb="tab"] {
+        border-radius: 9px !important;
+        min-height: 38px;
+        font-weight: 700;
+    }
+    [aria-selected="true"][data-baseweb="tab"] {
+        background: white !important;
+        box-shadow: 0 2px 7px rgba(20,24,35,.07);
+    }
+
+    /* 알림 박스 */
+    [data-testid="stAlert"] {
+        border-radius: 13px !important;
+        border-width: 1px !important;
+        box-shadow: none !important;
+    }
+
+    /* Expander */
+    [data-testid="stExpander"] {
+        background: var(--ss-surface);
+        border: 1px solid var(--ss-border) !important;
+        border-radius: 14px !important;
+        overflow: hidden;
+    }
+    [data-testid="stExpander"] summary {
+        font-weight: 700 !important;
+    }
+
+    /* 표 */
+    [data-testid="stDataFrame"] {
+        background: var(--ss-surface);
+        border: 1px solid var(--ss-border);
+        border-radius: 14px;
+        overflow: hidden;
+        box-shadow: 0 3px 12px rgba(20,24,35,.025);
+    }
+
+    /* form 자체를 검색 패널처럼 */
+    [data-testid="stForm"] {
+        background: rgba(255,255,255,.72);
+        border: 1px solid var(--ss-border);
+        border-radius: 15px;
+        padding: .9rem .95rem .95rem;
+        box-shadow: 0 3px 12px rgba(20,24,35,.025);
+    }
+
+    /* 이미지 */
+    [data-testid="stImage"] img {
+        border-radius: 13px !important;
+        border: 1px solid rgba(20,24,35,.06);
+    }
+
+    /* divider */
+    hr {
+        border: 0 !important;
+        border-top: 1px solid var(--ss-border) !important;
+        margin: 1.5rem 0 !important;
+    }
+
+    /* 상태 카드 */
+    .status-two-grid {
+        gap: .8rem !important;
+    }
+    .status-card {
+        background: var(--ss-surface);
+        border: 1px solid var(--ss-border) !important;
+        border-radius: 15px !important;
+        box-shadow: 0 3px 12px rgba(20,24,35,.03);
+    }
+    .status-label {
+        color: var(--ss-muted);
+        font-weight: 650;
+    }
+    .status-value {
+        color: var(--ss-text);
+        font-weight: 780;
+    }
+
+    /* progress */
+    [data-testid="stProgress"] > div > div > div {
+        border-radius: 999px !important;
+    }
+
+    /* 작은 화면 */
+    @media (max-width: 768px) {
+        .block-container {
+            padding-top: .9rem !important;
+            padding-left: .75rem !important;
+            padding-right: .75rem !important;
+        }
+        .ss-hero {
+            border-radius: 17px;
+            padding: 1rem 1rem;
+        }
+        .ss-logo {
+            width: 36px;
+            height: 36px;
+            border-radius: 11px;
+        }
+        .ss-brand {
+            font-size: 1.18rem;
+        }
+        .ss-hero-title {
+            font-size: .94rem;
+        }
+        .ss-hero-sub {
+            font-size: .82rem;
+        }
+        [data-testid="stMetric"] {
+            min-height: 94px;
+            padding: .75rem .8rem !important;
+            border-radius: 13px;
+        }
+        [data-testid="stForm"] {
+            padding: .7rem;
+            border-radius: 13px;
+        }
+        div[role="radiogroup"] label {
+            min-height: 34px;
+        }
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
 )
 
 st.markdown(
     """
-    ### Shorts Scope에서 할 수 있는 것
+    <div class="ss-hero">
+        <div class="ss-brand-row">
+            <div class="ss-logo">▶</div>
+            <div class="ss-brand">Shorts Scope</div>
+        </div>
+        <div class="ss-hero-title">YouTube Shorts 성과를 실제 데이터로 빠르게 확인하는 분석 대시보드</div>
+        <div class="ss-hero-sub">
+            Analytics 확정 데이터와 자체 스냅샷을 구분해 보여주고,
+            성장 흐름·채널 패턴·운영 기록을 한곳에서 관리합니다.
+        </div>
+        <div class="ss-chip-row">
+            <span class="ss-chip">실제 Analytics</span>
+            <span class="ss-chip">스냅샷 성장 추적</span>
+            <span class="ss-chip">채널 패턴</span>
+            <span class="ss-chip">운영 기록</span>
+        </div>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
 
-    - **채널 현황 확인**: 구독자, 총 조회수, 공개 영상 수를 한눈에 확인합니다.
-    - **Shorts 성과 분석**: 기간별 조회수, 시청시간, 구독자 변화와 영상별 성과를 분석합니다.
-    - **성과 비교 및 진단**: 시청률, 좋아요율, 구독 전환율 등을 비교해 다음 영상 제작에 참고할 수 있습니다.
 
-    Shorts Scope는 사용자가 직접 Google 계정을 연결한 경우에만
-    YouTube의 **읽기 전용 데이터**를 불러옵니다.
-    Shorts Scope는 사용자의 YouTube 콘텐츠를 생성, 수정 또는 삭제하지 않습니다.
-    """
+st.caption(
+    "Google 계정 연결 시 YouTube 읽기 전용 데이터만 사용합니다. "
+    "콘텐츠를 생성·수정·삭제하지 않습니다."
 )
 
 st.link_button(
@@ -1493,8 +1847,8 @@ st.success(
 # =========================================================
 # V6.4 2차 — 실제 화면 전환 메뉴
 # =========================================================
-st.markdown("## 🧭 Shorts Scope")
-st.caption("필요한 화면을 골라서 확인합니다.")
+st.markdown("### 분석 화면")
+st.caption("원하는 기능을 선택하세요.")
 
 page = st.radio(
     "화면 선택",
@@ -1515,33 +1869,15 @@ _page_help = {
 
 st.markdown("""
 <style>
-/* V6.4 readability polish */
-.stCaption, [data-testid="stCaptionContainer"], [data-testid="stCaptionContainer"] p {
-    color: rgba(20, 24, 35, 0.76) !important;
-    font-size: 0.88rem !important;
-    line-height: 1.45 !important;
-}
+/* V7.3 menu readability */
 .stMarkdown p {
-    color: rgba(20, 24, 35, 0.90);
+    color: rgba(23, 25, 35, 0.92);
 }
 [data-testid="stAlert"] p {
-    color: rgba(20, 24, 35, 0.88) !important;
-}
-[data-testid="stMetricLabel"] p {
-    color: rgba(20, 24, 35, 0.84) !important;
-}
-[data-testid="stMetricValue"] {
-    color: rgb(20, 24, 35) !important;
-}
-div[role="radiogroup"] label p {
-    color: rgba(20, 24, 35, 0.92) !important;
-    font-weight: 600 !important;
-}
-div[role="radiogroup"] {
-    gap: 0.45rem;
+    color: rgba(23, 25, 35, 0.90) !important;
 }
 div[data-baseweb="select"] * {
-    color: rgba(20, 24, 35, 0.92) !important;
+    color: rgba(23, 25, 35, 0.94) !important;
 }
 </style>
 """, unsafe_allow_html=True)
