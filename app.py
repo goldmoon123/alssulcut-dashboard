@@ -1324,11 +1324,6 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-st.caption(
-    "Google 계정 연결 시 YouTube 읽기 전용 데이터만 사용합니다. "
-    "콘텐츠를 생성·수정·삭제하지 않습니다."
-)
-
 
 # =========================================================
 # V7.4 — Product UI shell
@@ -1407,7 +1402,14 @@ st.markdown(
         display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.8rem;margin:.35rem 0 1.1rem;
     }
     .ss-mini-card {
-        background:#fff;border:1px solid var(--p-line);border-radius:14px;padding:.85rem .9rem;min-height:94px;
+        background:#fff;
+        border:1px solid var(--p-line);
+        border-radius:14px;
+        padding:.9rem .95rem;
+        min-height:108px;
+        display:flex;
+        flex-direction:column;
+        justify-content:space-between;
     }
     .ss-mini-label { color:var(--p-muted);font-size:.73rem;font-weight:700;margin-bottom:.34rem; }
     .ss-mini-title {
@@ -1968,6 +1970,7 @@ with st.sidebar:
     )
     st.markdown("---")
     st.caption(_page_help[page])
+    st.caption("YouTube 읽기 전용 · 콘텐츠 수정/삭제 안 함")
     st.link_button(
         "개인정보처리방침",
         "https://goldmoon123.github.io/alssulcut-dashboard/privacy.html",
@@ -2046,17 +2049,33 @@ if page == "🏠 홈":
     if _home_recent:
         _cards = []
         for _idx, (_hdt, _hv) in enumerate(_home_recent, start=1):
-            _title = str(_hv.get("title", "제목 없음")).replace("<", "&lt;").replace(">", "&gt;")
-            _cards.append(
-                f"""
-                <div class="ss-mini-card">
-                    <div class="ss-mini-label">최근 업로드 {_idx}</div>
-                    <div class="ss-mini-title">{_title}</div>
-                    <div class="ss-mini-meta">{_hdt.strftime('%m.%d %H:%M')} · {int(_hv.get('views',0) or 0):,}회</div>
-                </div>
-                """
+            _title = (
+                str(_hv.get("title", "제목 없음"))
+                .replace("&", "&amp;")
+                .replace("<", "&lt;")
+                .replace(">", "&gt;")
             )
-        st.markdown('<div class="ss-home-strip">' + ''.join(_cards) + '</div>', unsafe_allow_html=True)
+            _meta = (
+                f"{_hdt.strftime('%m.%d %H:%M')} · "
+                f"{int(_hv.get('views', 0) or 0):,}회"
+            )
+            _cards.append(
+                f'<div class="ss-mini-card">'
+                f'<div class="ss-mini-label">최근 업로드 {_idx}</div>'
+                f'<div class="ss-mini-title">{_title}</div>'
+                f'<div class="ss-mini-meta">{_meta}</div>'
+                f'</div>'
+            )
+
+        _home_cards_html = (
+            '<div class="ss-home-strip">'
+            + "".join(_cards)
+            + '</div>'
+        )
+        st.markdown(
+            _home_cards_html,
+            unsafe_allow_html=True,
+        )
 
     st.divider()
 
