@@ -1358,7 +1358,7 @@ st.caption("필요한 화면을 골라서 확인합니다.")
 
 page = st.radio(
     "화면 선택",
-    ["🏠 홈", "📈 성장 분석", "📊 채널 패턴", "🧪 운영", "🔎 영상 찾기"],
+    ["🏠 홈", "📈 성장 분석", "📊 채널 패턴", "🧪 운영", "📋 리포트", "🔎 영상 찾기"],
     horizontal=True,
     label_visibility="collapsed",
     key="main_page_v64",
@@ -1369,6 +1369,7 @@ _page_help = {
     "📈 성장 분석": "채널 기준선과 영상별 실제 성장 흐름 비교",
     "📊 채널 패턴": "최근 영상 묶음 · 요일 · 업로드 시간대별 실제 성과 비교",
     "🧪 운영": "목표 · 영상 태그 · 성과 메모 · 실험 기록",
+    "📋 리포트": "주간 리포트 · 이상 변화 · 개인 최고기록",
     "🔎 영상 찾기": "검색 · 전체 데이터 · TOP 순위 · Excel · 예약 영상",
 }
 
@@ -3411,6 +3412,368 @@ if page == "🧪 운영":
                                 st.error("실험 기록 삭제에 실패했습니다.")
             else:
                 st.caption("아직 저장된 실험이 없습니다.")
+
+    st.divider()
+
+
+
+if page == "📋 리포트":
+    st.header("📋 리포트")
+    st.caption(
+        "YouTube 실제 데이터와 Shorts Scope 스냅샷만 사용합니다. "
+        "원인을 추측하지 않고 변화와 기록만 정리합니다."
+    )
+
+    _report_today = today
+    _report_end = _report_today - timedelta(days=1)
+    _report_start = _report_end - timedelta(days=6)
+    _prev_end = _report_start - timedelta(days=1)
+    _prev_start = _prev_end - timedelta(days=6)
+
+    def _report_upload_count(start_d, end_d):
+        _count = 0
+        for _v in public_videos:
+            _raw = _v.get("published_raw")
+            if not _raw:
+                continue
+            try:
+                _dt = datetime.fromisoformat(
+                    _raw.replace("Z", "+00:00")
+                ).astimezone(KST)
+                if start_d <= _dt.date() <= end_d:
+                    _count += 1
+            except Exception:
+                pass
+        return _count
+
+    def _safe_pct_change(cur, prev):
+        if prev == 0:
+            return None
+        return ((cur - prev) / abs(prev)) * 100
+
+    # =====================================================
+    # 주간 리포트
+    # =====================================================
+    st.markdown("### 🗓️ 최근 7일 리포트")
+    st.caption(
+        f"{_report_start} ~ {_report_end} ↔ 이전 {_prev_start} ~ {_prev_end} · 오늘 제외"
+    )
+
+    try:
+        _week_now = get_period_summary(
+            yt_analytics,
+            _report_start,
+            _report_end,
+        )
+        _week_prev = get_period_summary(
+            yt_analytics,
+            _prev_start,
+            _prev_end,
+        )
+        _week_error = None
+    except Exception as _exc:
+        _week_now = None
+        _week_prev = None
+        _week_error = str(_exc)
+
+    if _week_now and _week_prev:
+        _now_uploads = _report_upload_count(_report_start, _report_end)
+        _prev_uploads = _report_upload_count(_prev_start, _prev_end)
+
+        _r1, _r2, _r3, _r4 = st.columns(4)
+        _r1.metric(
+            "조회수",
+            f"{_week_now['views']:,}회",
+            (
+                f"{_safe_pct_change(_week_now['views'], _week_prev['views']):+.1f}%"
+                if _safe_pct_change(_week_now['views'], _week_prev['views']) is not None
+                else "비교 불가"
+            ),
+        )
+        _r2.metric(
+            "시청시간",
+            format_watch_time(_week_now["watch_minutes"]),
+            (
+                f"{_safe_pct_change(_week_now['watch_minutes'], _week_prev['watch_minutes']):+.1f}%"
+                if _safe_pct_change(_week_now['watch_minutes'], _week_prev['watch_minutes']) is not None
+                else "비교 불가"
+            ),
+        )
+        _r3.metric(
+            "순구독자",
+            f"{_week_now['net_subscribers']:+,}명",
+            f"{_week_now['net_subscribers'] - _week_prev['net_subscribers']:+,}명",
+        )
+        _r4.metric(
+            "업로드",
+            f"{_now_uploads}개",
+            f"{_now_uploads - _prev_uploads:+d}개",
+        )
+
+        _week_rows = pd.DataFrame([
+            {
+                "항목": "조회수",
+                "최근 7일": _week_now["views"],
+                "이전 7일": _week_prev["views"],
+            },
+            {
+                "항목": "시청시간(분)",
+                "최근 7일": round(_week_now["watch_minutes"], 1),
+                "이전 7일": round(_week_prev["watch_minutes"], 1),
+            },
+            {
+                "항목": "순구독자",
+                "최근 7일": _week_now["net_subscribers"],
+                "이전 7일": _week_prev["net_subscribers"],
+            },
+        ])
+        st.dataframe(_week_rows, hide_index=True, use_container_width=True)
+
+        if _prev_uploads == 0:
+            st.caption(
+                "※ 이전 7일 업로드가 0개라 조회수 변화만으로 영상 성과 개선을 단정하지 않습니다."
+            )
+    else:
+        st.info("⏳ 최근 7일 리포트 데이터를 아직 불러오지 못했습니다.")
+        if _week_error:
+            with st.expander("기술 오류 상세보기"):
+                st.code(_week_error)
+
+    # =====================================================
+    # 최근 7일 업로드 영상
+    # =====================================================
+    _recent_uploaded = []
+    for _v in public_videos:
+        _raw = _v.get("published_raw")
+        if not _raw:
+            continue
+        try:
+            _dt = datetime.fromisoformat(
+                _raw.replace("Z", "+00:00")
+            ).astimezone(KST)
+            if _report_start <= _dt.date() <= _report_end:
+                _recent_uploaded.append((_dt, _v))
+        except Exception:
+            pass
+
+    _recent_uploaded.sort(
+        key=lambda x: int(x[1].get("views", 0) or 0),
+        reverse=True,
+    )
+
+    st.markdown("### 🎬 최근 7일 업로드 성과")
+    if _recent_uploaded:
+        _recent_views = [
+            int(v.get("views", 0) or 0)
+            for _, v in _recent_uploaded
+        ]
+        _recent_median = float(pd.Series(_recent_views).median())
+
+        _rv1, _rv2, _rv3 = st.columns(3)
+        _rv1.metric("업로드 수", f"{len(_recent_uploaded)}개")
+        _rv2.metric(
+            "영상 중앙 조회수",
+            f"{_recent_median:,.0f}회",
+        )
+        _rv3.metric(
+            "최고 조회수",
+            f"{max(_recent_views):,}회",
+        )
+
+        _recent_table = []
+        for _idx, (_dt, _v) in enumerate(_recent_uploaded, start=1):
+            _recent_table.append({
+                "순위": _idx,
+                "업로드": _dt.strftime("%m.%d"),
+                "제목": _v.get("title", ""),
+                "조회수": int(_v.get("views", 0) or 0),
+                "좋아요": int(_v.get("likes", 0) or 0),
+                "댓글": int(_v.get("comments", 0) or 0),
+            })
+        st.dataframe(
+            pd.DataFrame(_recent_table),
+            hide_index=True,
+            use_container_width=True,
+        )
+    else:
+        st.caption("최근 7일 업로드 영상이 없습니다.")
+
+    st.divider()
+
+    # =====================================================
+    # 이상 변화 감지
+    # =====================================================
+    st.markdown("### 🚨 이상 변화 감지")
+    st.caption(
+        "스냅샷에서 확인되는 급상승·재상승·강한 하락만 표시합니다. "
+        "원인 설명은 하지 않습니다."
+    )
+
+    try:
+        _report_channel_id = _connected_youtube_channel_id(youtube)
+        _report_since = (
+            datetime.now(timezone.utc) - timedelta(days=8)
+        ).isoformat()
+        _report_snap_fetch = _fetch_channel_snapshots(
+            _report_channel_id,
+            _report_since,
+        )
+    except Exception:
+        _report_snap_fetch = {
+            "ok": False,
+            "reason": "snapshot_error",
+            "rows": [],
+        }
+
+    _anomalies = []
+    if _report_snap_fetch.get("ok"):
+        _report_by_video = _group_snapshot_rows(
+            _report_snap_fetch.get("rows", []),
+            [v.get("video_id") for v in public_videos],
+        )
+        _now_utc = datetime.now(timezone.utc)
+
+        for _v in public_videos:
+            _rows = _report_by_video.get(_v.get("video_id"), [])
+            if not _rows:
+                continue
+
+            _state = _snapshot_growth_state(
+                _v,
+                _rows,
+                _now_utc,
+            )
+            _event = _snapshot_special_event(
+                _v,
+                _state,
+                _rows,
+                _now_utc,
+            )
+
+            if _event.get("label"):
+                _anomalies.append({
+                    "priority": 3 if _event.get("event") == "surge" else 2,
+                    "상태": _event.get("label"),
+                    "제목": _v.get("title", ""),
+                    "최근 증가": int(_state.get("recent_gain") or 0),
+                    "직전 증가": int(_state.get("previous_gain") or 0),
+                    "신뢰도": _event.get("confidence"),
+                    "근거": _event.get("reason") or "",
+                })
+            elif (
+                _state
+                and _state.get("state") == "↘ 하락"
+                and _state.get("confidence") in ("보통", "높음")
+                and int(_state.get("recent_gain") or 0) > 0
+            ):
+                _anomalies.append({
+                    "priority": 1,
+                    "상태": "↘ 강한 하락",
+                    "제목": _v.get("title", ""),
+                    "최근 증가": int(_state.get("recent_gain") or 0),
+                    "직전 증가": int(_state.get("previous_gain") or 0),
+                    "신뢰도": _state.get("confidence"),
+                    "근거": (
+                        f"최근 {_state.get('window_hours')}시간 "
+                        f"+{int(_state.get('recent_gain') or 0):,}회 · "
+                        f"직전 +{int(_state.get('previous_gain') or 0):,}회"
+                    ),
+                })
+
+    if _anomalies:
+        _anomalies.sort(
+            key=lambda x: (x["priority"], x["최근 증가"]),
+            reverse=True,
+        )
+        _anomaly_df = pd.DataFrame(_anomalies[:20])[
+            ["상태", "제목", "최근 증가", "직전 증가", "신뢰도", "근거"]
+        ]
+        st.dataframe(
+            _anomaly_df,
+            hide_index=True,
+            use_container_width=True,
+        )
+    else:
+        st.caption(
+            "현재 표시할 급상승·재상승·강한 하락이 없습니다. "
+            "스냅샷 데이터가 더 쌓이면 자동으로 감지합니다."
+        )
+
+    st.divider()
+
+    # =====================================================
+    # 개인 최고기록
+    # =====================================================
+    st.markdown("### 🏆 개인 최고기록")
+    st.caption(
+        "현재 분석 가능한 공개 영상 기준입니다. "
+        "YouTube 공식 기록이 아니라 Shorts Scope 내부 비교입니다."
+    )
+
+    if public_videos:
+        _best_views = max(
+            public_videos,
+            key=lambda v: int(v.get("views", 0) or 0),
+        )
+        _best_likes = max(
+            public_videos,
+            key=lambda v: int(v.get("likes", 0) or 0),
+        )
+        _best_comments = max(
+            public_videos,
+            key=lambda v: int(v.get("comments", 0) or 0),
+        )
+
+        _analytics_candidates = [
+            v for v in public_videos
+            if v.get("video_id") in video_analytics
+        ]
+
+        _record_rows = [
+            {
+                "기록": "최고 조회수",
+                "영상": _best_views.get("title", ""),
+                "값": f"{int(_best_views.get('views', 0) or 0):,}회",
+            },
+            {
+                "기록": "최다 좋아요",
+                "영상": _best_likes.get("title", ""),
+                "값": f"{int(_best_likes.get('likes', 0) or 0):,}개",
+            },
+            {
+                "기록": "최다 댓글",
+                "영상": _best_comments.get("title", ""),
+                "값": f"{int(_best_comments.get('comments', 0) or 0):,}개",
+            },
+        ]
+
+        if _analytics_candidates:
+            _best_ret = max(
+                _analytics_candidates,
+                key=lambda v: float(v.get("avg_percentage", 0) or 0),
+            )
+            _best_sub = max(
+                _analytics_candidates,
+                key=lambda v: float(v.get("sub_conversion_rate", 0) or 0),
+            )
+            _record_rows.extend([
+                {
+                    "기록": "최고 평균 시청률",
+                    "영상": _best_ret.get("title", ""),
+                    "값": f"{float(_best_ret.get('avg_percentage', 0) or 0):.1f}%",
+                },
+                {
+                    "기록": "최고 구독전환율",
+                    "영상": _best_sub.get("title", ""),
+                    "값": f"{float(_best_sub.get('sub_conversion_rate', 0) or 0):.3f}%",
+                },
+            ])
+
+        st.dataframe(
+            pd.DataFrame(_record_rows),
+            hide_index=True,
+            use_container_width=True,
+        )
 
     st.divider()
 
