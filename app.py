@@ -76,6 +76,176 @@ SUPABASE_SECRET_KEY = (
 )
 
 
+
+def _supabase_rest_headers():
+    if not SUPABASE_URL or not SUPABASE_SECRET_KEY:
+        return None
+    return {
+        "apikey": SUPABASE_SECRET_KEY,
+        "Authorization": f"Bearer {SUPABASE_SECRET_KEY}",
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+    }
+
+
+def _supabase_table_get(table_name, params):
+    headers = _supabase_rest_headers()
+    if not headers:
+        return {"ok": False, "reason": "not_configured", "rows": []}
+
+    try:
+        response = requests.get(
+            f"{SUPABASE_URL.rstrip('/')}/rest/v1/{table_name}",
+            headers=headers,
+            params=params,
+            timeout=15,
+        )
+        if response.status_code not in (200, 206):
+            return {
+                "ok": False,
+                "reason": "http_error",
+                "status": response.status_code,
+                "rows": [],
+            }
+        rows = response.json()
+        return {
+            "ok": True,
+            "reason": None,
+            "rows": rows if isinstance(rows, list) else [],
+        }
+    except Exception:
+        return {"ok": False, "reason": "request_error", "rows": []}
+
+
+def _supabase_table_upsert(table_name, payload, on_conflict):
+    headers = _supabase_rest_headers()
+    if not headers:
+        return {"ok": False, "reason": "not_configured"}
+
+    try:
+        response = requests.post(
+            f"{SUPABASE_URL.rstrip('/')}/rest/v1/{table_name}",
+            headers={
+                **headers,
+                "Prefer": "resolution=merge-duplicates,return=representation",
+            },
+            params={"on_conflict": on_conflict},
+            json=payload,
+            timeout=15,
+        )
+        if response.status_code not in (200, 201):
+            return {
+                "ok": False,
+                "reason": "http_error",
+                "status": response.status_code,
+                "message": response.text[:500],
+            }
+        return {
+            "ok": True,
+            "reason": None,
+            "rows": response.json() if response.text else [],
+        }
+    except Exception as exc:
+        return {
+            "ok": False,
+            "reason": "request_error",
+            "message": str(exc),
+        }
+
+
+def _supabase_table_insert(table_name, payload):
+    headers = _supabase_rest_headers()
+    if not headers:
+        return {"ok": False, "reason": "not_configured"}
+
+    try:
+        response = requests.post(
+            f"{SUPABASE_URL.rstrip('/')}/rest/v1/{table_name}",
+            headers={**headers, "Prefer": "return=representation"},
+            json=payload,
+            timeout=15,
+        )
+        if response.status_code not in (200, 201):
+            return {
+                "ok": False,
+                "reason": "http_error",
+                "status": response.status_code,
+                "message": response.text[:500],
+            }
+        return {
+            "ok": True,
+            "reason": None,
+            "rows": response.json() if response.text else [],
+        }
+    except Exception as exc:
+        return {
+            "ok": False,
+            "reason": "request_error",
+            "message": str(exc),
+        }
+
+
+def _supabase_table_update(table_name, filters, payload):
+    headers = _supabase_rest_headers()
+    if not headers:
+        return {"ok": False, "reason": "not_configured"}
+
+    try:
+        response = requests.patch(
+            f"{SUPABASE_URL.rstrip('/')}/rest/v1/{table_name}",
+            headers={**headers, "Prefer": "return=representation"},
+            params=filters,
+            json=payload,
+            timeout=15,
+        )
+        if response.status_code not in (200, 204):
+            return {
+                "ok": False,
+                "reason": "http_error",
+                "status": response.status_code,
+                "message": response.text[:500],
+            }
+        return {
+            "ok": True,
+            "reason": None,
+            "rows": response.json() if response.text else [],
+        }
+    except Exception as exc:
+        return {
+            "ok": False,
+            "reason": "request_error",
+            "message": str(exc),
+        }
+
+
+def _supabase_table_delete(table_name, filters):
+    headers = _supabase_rest_headers()
+    if not headers:
+        return {"ok": False, "reason": "not_configured"}
+
+    try:
+        response = requests.delete(
+            f"{SUPABASE_URL.rstrip('/')}/rest/v1/{table_name}",
+            headers={**headers, "Prefer": "return=minimal"},
+            params=filters,
+            timeout=15,
+        )
+        if response.status_code not in (200, 204):
+            return {
+                "ok": False,
+                "reason": "http_error",
+                "status": response.status_code,
+                "message": response.text[:500],
+            }
+        return {"ok": True, "reason": None}
+    except Exception as exc:
+        return {
+            "ok": False,
+            "reason": "request_error",
+            "message": str(exc),
+        }
+
+
 def _connected_youtube_channel_id(youtube_client):
     """현재 OAuth로 연결된 YouTube 채널 ID를 직접 확인합니다."""
     response = youtube_client.channels().list(
@@ -1188,7 +1358,7 @@ st.caption("필요한 화면을 골라서 확인합니다.")
 
 page = st.radio(
     "화면 선택",
-    ["🏠 홈", "📈 성장 분석", "📊 채널 패턴", "🔎 영상 찾기"],
+    ["🏠 홈", "📈 성장 분석", "📊 채널 패턴", "🧪 운영", "🔎 영상 찾기"],
     horizontal=True,
     label_visibility="collapsed",
     key="main_page_v64",
@@ -1198,6 +1368,7 @@ _page_help = {
     "🏠 홈": "채널 핵심 상태와 공개 영상 성과 확인",
     "📈 성장 분석": "채널 기준선과 영상별 실제 성장 흐름 비교",
     "📊 채널 패턴": "최근 영상 묶음 · 요일 · 업로드 시간대별 실제 성과 비교",
+    "🧪 운영": "목표 · 영상 태그 · 성과 메모 · 실험 기록",
     "🔎 영상 찾기": "검색 · 전체 데이터 · TOP 순위 · Excel · 예약 영상",
 }
 
@@ -2794,6 +2965,452 @@ if page == "📊 채널 패턴":
         st.caption(
             "즉 주제 패턴 화면의 자리는 준비하되, 근거 없는 자동 분류는 하지 않습니다."
         )
+
+    st.divider()
+
+
+
+if page == "🧪 운영":
+    st.header("🧪 운영")
+    st.caption(
+        "영상의 실제 성과 데이터와 사용자가 직접 남긴 기록을 분리해서 관리합니다. "
+        "이 기록은 나중에 쇼마스터와 연결할 수 있도록 구조화합니다."
+    )
+
+    try:
+        _ops_channel_id = _connected_youtube_channel_id(youtube)
+    except Exception:
+        _ops_channel_id = None
+
+    if not _ops_channel_id:
+        st.warning("현재 연결된 YouTube 채널을 확인하지 못했습니다.")
+    elif not SUPABASE_URL or not SUPABASE_SECRET_KEY:
+        st.warning("Supabase 운영 데이터 저장 설정이 연결되지 않았습니다.")
+    else:
+        _tab_goal, _tab_video, _tab_experiment = st.tabs(
+            ["🎯 목표", "📝 영상 기록", "🧪 실험 기록"]
+        )
+
+        # =====================================================
+        # 목표
+        # =====================================================
+        with _tab_goal:
+            st.subheader("🎯 채널 목표")
+            st.caption(
+                "목표는 성과 판정 기준이 아니라 운영 계획을 기록하는 용도입니다."
+            )
+
+            _goal_fetch = _supabase_table_get(
+                "channel_goals",
+                {
+                    "select": "*",
+                    "channel_id": f"eq.{_ops_channel_id}",
+                    "limit": 1,
+                },
+            )
+            _goal_row = (
+                _goal_fetch.get("rows", [])[0]
+                if _goal_fetch.get("ok") and _goal_fetch.get("rows")
+                else {}
+            )
+
+            with st.form("v67_channel_goal_form"):
+                _goal_weekly_uploads = st.number_input(
+                    "주간 업로드 목표",
+                    min_value=0,
+                    max_value=100,
+                    value=int(_goal_row.get("weekly_upload_goal") or 0),
+                    step=1,
+                )
+                _goal_target_views = st.number_input(
+                    "영상 1개 목표 조회수",
+                    min_value=0,
+                    value=int(_goal_row.get("target_views") or 0),
+                    step=1000,
+                )
+                _goal_note = st.text_area(
+                    "목표 메모",
+                    value=str(_goal_row.get("goal_note") or ""),
+                    placeholder="예: 이번 달은 업로드 빈도보다 유지율 높은 포맷 찾기에 집중",
+                )
+
+                _save_goal = st.form_submit_button(
+                    "💾 목표 저장",
+                    use_container_width=True,
+                )
+
+            if _save_goal:
+                _result = _supabase_table_upsert(
+                    "channel_goals",
+                    {
+                        "channel_id": _ops_channel_id,
+                        "user_id": None,
+                        "weekly_upload_goal": int(_goal_weekly_uploads),
+                        "target_views": int(_goal_target_views),
+                        "goal_note": _goal_note.strip(),
+                        "updated_at": datetime.now(timezone.utc).isoformat(),
+                    },
+                    "channel_id",
+                )
+                if _result.get("ok"):
+                    st.success("목표를 저장했습니다.")
+                else:
+                    st.error(
+                        "목표 저장에 실패했습니다. 운영 테이블이 아직 만들어지지 않았을 수 있습니다."
+                    )
+                    if _result.get("message"):
+                        with st.expander("기술 오류 상세보기"):
+                            st.code(_result["message"])
+
+        # =====================================================
+        # 영상 기록
+        # =====================================================
+        with _tab_video:
+            st.subheader("📝 영상별 기록")
+            st.caption(
+                "여기 내용은 사용자가 직접 기록합니다. "
+                "Shorts Scope가 근거 없이 원인이나 개선점을 자동 생성하지 않습니다."
+            )
+
+            _ops_public = sorted(
+                public_videos,
+                key=lambda v: v.get("published_raw") or "",
+                reverse=True,
+            )
+
+            _video_search = st.text_input(
+                "영상 검색",
+                placeholder="제목 일부 입력",
+                key="v67_video_note_search",
+            ).strip().lower()
+
+            _ops_filtered = [
+                v for v in _ops_public
+                if not _video_search
+                or _video_search in str(v.get("title", "")).lower()
+            ]
+
+            if not _ops_filtered:
+                st.info("검색 조건에 맞는 영상이 없습니다.")
+            else:
+                _video_option_map = {}
+                _video_options = []
+                for _v in _ops_filtered:
+                    _raw = _v.get("published_raw")
+                    _date_text = ""
+                    if _raw:
+                        try:
+                            _date_text = datetime.fromisoformat(
+                                _raw.replace("Z", "+00:00")
+                            ).astimezone(KST).strftime("%Y.%m.%d")
+                        except Exception:
+                            pass
+                    _label = (
+                        f"{_date_text} | {_v.get('title', '제목 없음')} "
+                        f"| {int(_v.get('views', 0) or 0):,}회"
+                    )
+                    _key = f"{_label} [{_v.get('video_id')}]"
+                    _video_options.append(_key)
+                    _video_option_map[_key] = _v
+
+                _selected_video_key = st.selectbox(
+                    "기록할 영상",
+                    _video_options,
+                    format_func=lambda x: x.rsplit(" [", 1)[0],
+                    key="v67_video_note_select",
+                )
+                _selected_video = _video_option_map[_selected_video_key]
+                _selected_video_id = _selected_video.get("video_id")
+
+                _note_fetch = _supabase_table_get(
+                    "video_notes",
+                    {
+                        "select": "*",
+                        "channel_id": f"eq.{_ops_channel_id}",
+                        "video_id": f"eq.{_selected_video_id}",
+                        "limit": 1,
+                    },
+                )
+                _note = (
+                    _note_fetch.get("rows", [])[0]
+                    if _note_fetch.get("ok") and _note_fetch.get("rows")
+                    else {}
+                )
+
+                _tag_options = [
+                    "정보형",
+                    "실험형",
+                    "비교형",
+                    "과정형",
+                    "반전형",
+                    "문제해결형",
+                    "스토리형",
+                    "기타",
+                ]
+                _saved_tags = _note.get("tags") or []
+                if not isinstance(_saved_tags, list):
+                    _saved_tags = []
+
+                with st.form(f"v67_video_note_form_{_selected_video_id}"):
+                    _topic = st.text_input(
+                        "주제",
+                        value=str(_note.get("topic") or ""),
+                        placeholder="예: 타이어 제작 / 과학 원리 / 생활 기술",
+                    )
+                    _tags = st.multiselect(
+                        "영상 태그",
+                        options=_tag_options,
+                        default=[x for x in _saved_tags if x in _tag_options],
+                    )
+
+                    _n1, _n2 = st.columns(2)
+                    with _n1:
+                        _first_line = st.text_input(
+                            "첫 문장",
+                            value=str(_note.get("first_line") or ""),
+                        )
+                        _first_scene = st.text_input(
+                            "첫 장면",
+                            value=str(_note.get("first_scene") or ""),
+                        )
+                    with _n2:
+                        _hook_type = st.text_input(
+                            "훅 유형",
+                            value=str(_note.get("hook_type") or ""),
+                            placeholder="예: 질문 / 충격 장면 / 결과 먼저",
+                        )
+                        _script_structure = st.text_input(
+                            "구조",
+                            value=str(_note.get("script_structure") or ""),
+                            placeholder="예: 훅 → 원리 → 결과",
+                        )
+
+                    _user_comment = st.text_area(
+                        "내 코멘트",
+                        value=str(_note.get("user_comment") or ""),
+                        placeholder="이 영상에 대해 기억해둘 자유 메모",
+                    )
+                    _what_worked = st.text_area(
+                        "잘됐다고 생각한 점",
+                        value=str(_note.get("what_worked_user") or ""),
+                        placeholder="사용자가 직접 판단해서 기록",
+                    )
+                    _what_failed = st.text_area(
+                        "아쉬운 점 / 개선점",
+                        value=str(_note.get("what_failed_user") or ""),
+                        placeholder="예: 초반 설명이 길었음 / 저장 유도가 약했음",
+                    )
+                    _next_use = st.text_area(
+                        "다음에 반복하거나 바꿀 것",
+                        value=str(_note.get("next_use_user") or ""),
+                    )
+
+                    _save_note = st.form_submit_button(
+                        "💾 영상 기록 저장",
+                        use_container_width=True,
+                    )
+
+                if _save_note:
+                    _result = _supabase_table_upsert(
+                        "video_notes",
+                        {
+                            "channel_id": _ops_channel_id,
+                            "user_id": None,
+                            "video_id": _selected_video_id,
+                            "title": _selected_video.get("title"),
+                            "topic": _topic.strip(),
+                            "tags": _tags,
+                            "first_line": _first_line.strip(),
+                            "first_scene": _first_scene.strip(),
+                            "hook_type": _hook_type.strip(),
+                            "script_structure": _script_structure.strip(),
+                            "user_comment": _user_comment.strip(),
+                            "what_worked_user": _what_worked.strip(),
+                            "what_failed_user": _what_failed.strip(),
+                            "next_use_user": _next_use.strip(),
+                            "source": "user",
+                            "updated_at": datetime.now(timezone.utc).isoformat(),
+                        },
+                        "channel_id,video_id",
+                    )
+                    if _result.get("ok"):
+                        st.success("영상 기록을 저장했습니다.")
+                    else:
+                        st.error(
+                            "영상 기록 저장에 실패했습니다. 운영 테이블이 아직 만들어지지 않았을 수 있습니다."
+                        )
+                        if _result.get("message"):
+                            with st.expander("기술 오류 상세보기"):
+                                st.code(_result["message"])
+
+                st.divider()
+                st.markdown("#### 📦 쇼마스터 전달용 요약")
+                _va = video_analytics.get(_selected_video_id, {})
+                _export_text = (
+                    f"[Shorts Scope 영상 기록]\\n"
+                    f"제목: {_selected_video.get('title', '')}\\n"
+                    f"조회수: {int(_selected_video.get('views', 0) or 0):,}\\n"
+                    f"평균 시청률: {float(_va.get('average_view_percentage', 0) or 0):.1f}%\\n"
+                    f"주제: {_topic}\\n"
+                    f"태그: {', '.join(_tags)}\\n"
+                    f"첫 문장: {_first_line}\\n"
+                    f"첫 장면: {_first_scene}\\n"
+                    f"훅 유형: {_hook_type}\\n"
+                    f"구조: {_script_structure}\\n"
+                    f"내 코멘트: {_user_comment}\\n"
+                    f"잘된 점(사용자 기록): {_what_worked}\\n"
+                    f"아쉬운 점(사용자 기록): {_what_failed}\\n"
+                    f"다음에 반복/변경: {_next_use}\\n"
+                )
+                st.code(_export_text, language=None)
+                st.caption(
+                    "현재는 수동 복사용입니다. GPT API 연결 단계에서 쇼마스터로 자동 전달할 수 있게 확장합니다."
+                )
+
+        # =====================================================
+        # 실험 기록
+        # =====================================================
+        with _tab_experiment:
+            st.subheader("🧪 실험 기록")
+            st.caption(
+                "무엇을 바꿨는지 먼저 기록하고, 결과는 나중에 실제 데이터가 나온 뒤 작성합니다."
+            )
+
+            with st.form("v67_experiment_add"):
+                _exp_title = st.text_input(
+                    "실험 이름",
+                    placeholder="예: 첫 1초에 결과 장면 먼저 보여주기",
+                )
+                _exp_hypothesis = st.text_area(
+                    "가설",
+                    placeholder="예: 첫 장면에서 결과를 먼저 보여주면 초반 이탈이 줄어들 것이다.",
+                )
+                _exp_change = st.text_area(
+                    "실제로 바꿀 것",
+                    placeholder="예: 첫 1초 완성 장면 → 2초부터 제작 과정",
+                )
+                _exp_start = st.date_input(
+                    "시작일",
+                    value=today,
+                    key="v67_exp_start",
+                )
+                _add_exp = st.form_submit_button(
+                    "➕ 실험 추가",
+                    use_container_width=True,
+                )
+
+            if _add_exp:
+                if not _exp_title.strip():
+                    st.warning("실험 이름을 입력해주세요.")
+                else:
+                    _result = _supabase_table_insert(
+                        "experiments",
+                        {
+                            "channel_id": _ops_channel_id,
+                            "user_id": None,
+                            "title": _exp_title.strip(),
+                            "hypothesis": _exp_hypothesis.strip(),
+                            "change_made": _exp_change.strip(),
+                            "status": "진행 중",
+                            "start_date": _exp_start.isoformat(),
+                            "result_note": "",
+                            "created_at": datetime.now(timezone.utc).isoformat(),
+                            "updated_at": datetime.now(timezone.utc).isoformat(),
+                        },
+                    )
+                    if _result.get("ok"):
+                        st.success("실험을 추가했습니다.")
+                    else:
+                        st.error(
+                            "실험 저장에 실패했습니다. 운영 테이블이 아직 만들어지지 않았을 수 있습니다."
+                        )
+
+            _exp_fetch = _supabase_table_get(
+                "experiments",
+                {
+                    "select": "*",
+                    "channel_id": f"eq.{_ops_channel_id}",
+                    "order": "created_at.desc",
+                    "limit": 100,
+                },
+            )
+            _experiments = (
+                _exp_fetch.get("rows", [])
+                if _exp_fetch.get("ok")
+                else []
+            )
+
+            if _experiments:
+                st.markdown("#### 실험 목록")
+                for _exp in _experiments:
+                    _exp_id = _exp.get("id")
+                    _status = _exp.get("status") or "진행 중"
+                    with st.expander(
+                        f"{_status} · {_exp.get('title', '이름 없음')}"
+                    ):
+                        st.write(f"**가설:** {_exp.get('hypothesis') or '-'}")
+                        st.write(f"**변경 내용:** {_exp.get('change_made') or '-'}")
+                        st.write(f"**시작일:** {_exp.get('start_date') or '-'}")
+
+                        _new_status = st.selectbox(
+                            "상태",
+                            ["진행 중", "완료", "보류"],
+                            index=(
+                                ["진행 중", "완료", "보류"].index(_status)
+                                if _status in ["진행 중", "완료", "보류"]
+                                else 0
+                            ),
+                            key=f"v67_exp_status_{_exp_id}",
+                        )
+                        _result_note = st.text_area(
+                            "결과 메모",
+                            value=str(_exp.get("result_note") or ""),
+                            key=f"v67_exp_result_{_exp_id}",
+                        )
+
+                        _ec1, _ec2 = st.columns(2)
+                        if _ec1.button(
+                            "💾 수정 저장",
+                            key=f"v67_exp_save_{_exp_id}",
+                            use_container_width=True,
+                        ):
+                            _result = _supabase_table_update(
+                                "experiments",
+                                {
+                                    "id": f"eq.{_exp_id}",
+                                    "channel_id": f"eq.{_ops_channel_id}",
+                                },
+                                {
+                                    "status": _new_status,
+                                    "result_note": _result_note.strip(),
+                                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                                },
+                            )
+                            if _result.get("ok"):
+                                st.success("실험 기록을 수정했습니다.")
+                                st.rerun()
+                            else:
+                                st.error("실험 기록 수정에 실패했습니다.")
+
+                        if _ec2.button(
+                            "🗑️ 삭제",
+                            key=f"v67_exp_delete_{_exp_id}",
+                            use_container_width=True,
+                        ):
+                            _result = _supabase_table_delete(
+                                "experiments",
+                                {
+                                    "id": f"eq.{_exp_id}",
+                                    "channel_id": f"eq.{_ops_channel_id}",
+                                },
+                            )
+                            if _result.get("ok"):
+                                st.success("실험 기록을 삭제했습니다.")
+                                st.rerun()
+                            else:
+                                st.error("실험 기록 삭제에 실패했습니다.")
+            else:
+                st.caption("아직 저장된 실험이 없습니다.")
 
     st.divider()
 
