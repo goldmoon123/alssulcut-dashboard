@@ -1324,41 +1324,124 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-st.markdown(
-    """
-    <div class="ss-hero">
-        <div class="ss-brand-row">
-            <div class="ss-logo">▶</div>
-            <div class="ss-brand">Shorts Scope</div>
-        </div>
-        <div class="ss-hero-title">YouTube Shorts 성과를 실제 데이터로 빠르게 확인하는 분석 대시보드</div>
-        <div class="ss-hero-sub">
-            Analytics 확정 데이터와 자체 스냅샷을 구분해 보여주고,
-            성장 흐름·채널 패턴·운영 기록을 한곳에서 관리합니다.
-        </div>
-        <div class="ss-chip-row">
-            <span class="ss-chip">실제 Analytics</span>
-            <span class="ss-chip">스냅샷 성장 추적</span>
-            <span class="ss-chip">채널 패턴</span>
-            <span class="ss-chip">운영 기록</span>
-        </div>
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
-
-
 st.caption(
     "Google 계정 연결 시 YouTube 읽기 전용 데이터만 사용합니다. "
     "콘텐츠를 생성·수정·삭제하지 않습니다."
 )
 
-st.link_button(
-    "🔒 개인정보처리방침",
-    "https://goldmoon123.github.io/alssulcut-dashboard/privacy.html",
-)
 
-st.divider()
+# =========================================================
+# V7.4 — Product UI shell
+# =========================================================
+st.markdown(
+    """
+    <style>
+    :root {
+        --p-bg:#f4f6f8; --p-card:#fff; --p-text:#111827; --p-muted:#6b7280;
+        --p-line:#e5e7eb; --p-accent:#ff4d5a; --p-sidebar:#111318;
+    }
+    .stApp { background:var(--p-bg)!important; }
+    .block-container { max-width:1320px!important; padding-top:1.25rem!important; padding-bottom:5rem!important; }
+    [data-testid="stHeader"] { background:transparent!important; }
+
+    section[data-testid="stSidebar"] {
+        background:var(--p-sidebar)!important;
+        border-right:1px solid rgba(255,255,255,.06);
+    }
+    section[data-testid="stSidebar"] > div { padding-top:1rem!important; }
+    section[data-testid="stSidebar"] * { color:#eef1f6; }
+    section[data-testid="stSidebar"] .stCaption,
+    section[data-testid="stSidebar"] [data-testid="stCaptionContainer"] p { color:#8e96a6!important; }
+
+    section[data-testid="stSidebar"] div[role="radiogroup"] {
+        display:flex!important; flex-direction:column!important; gap:.25rem!important; width:100%;
+    }
+    section[data-testid="stSidebar"] div[role="radiogroup"] label {
+        width:100%; border:0!important; border-radius:10px!important;
+        background:transparent!important; padding:.52rem .62rem!important; min-height:42px;
+    }
+    section[data-testid="stSidebar"] div[role="radiogroup"] label:hover {
+        background:rgba(255,255,255,.07)!important;
+    }
+    section[data-testid="stSidebar"] div[role="radiogroup"] label:has(input:checked) {
+        background:rgba(255,255,255,.11)!important;
+        box-shadow:inset 3px 0 0 var(--p-accent);
+    }
+    section[data-testid="stSidebar"] div[role="radiogroup"] label p {
+        color:#e9edf5!important; font-size:.9rem!important; font-weight:650!important;
+    }
+    section[data-testid="stSidebar"] input[type="radio"] { display:none!important; }
+
+    .ss-side-brand { display:flex; align-items:center; gap:.65rem; padding:.15rem .25rem .95rem; }
+    .ss-side-logo {
+        width:34px;height:34px;border-radius:10px;display:grid;place-items:center;
+        background:linear-gradient(135deg,#ff4d5a,#ff725f);color:white;font-weight:900;
+        box-shadow:0 8px 20px rgba(255,77,90,.22);
+    }
+    .ss-side-name { font-size:1.08rem;font-weight:800;letter-spacing:-.02em; }
+    .ss-channel-chip {
+        border:1px solid rgba(255,255,255,.08); background:rgba(255,255,255,.045);
+        border-radius:12px; padding:.72rem .75rem; margin:.15rem 0 .85rem;
+    }
+    .ss-channel-chip .name {
+        font-weight:700;font-size:.88rem;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+    }
+    .ss-channel-chip .status { color:#75dfaa;font-size:.75rem;margin-top:.28rem; }
+
+    .ss-page-head {
+        display:flex;align-items:flex-start;justify-content:space-between;gap:1rem;margin:.15rem 0 1.1rem;
+    }
+    .ss-page-kicker {
+        color:var(--p-accent);font-weight:800;font-size:.72rem;letter-spacing:.08em;margin-bottom:.28rem;
+    }
+    .ss-page-title {
+        color:var(--p-text);font-size:1.85rem;font-weight:820;letter-spacing:-.035em;line-height:1.12;
+    }
+    .ss-page-desc { color:var(--p-muted);font-size:.9rem;margin-top:.34rem;max-width:760px;line-height:1.5; }
+    .ss-page-badge {
+        flex:0 0 auto;border:1px solid var(--p-line);background:#fff;border-radius:999px;
+        padding:.42rem .68rem;color:#4b5563;font-size:.76rem;font-weight:700;
+    }
+
+    .ss-home-strip {
+        display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.8rem;margin:.35rem 0 1.1rem;
+    }
+    .ss-mini-card {
+        background:#fff;border:1px solid var(--p-line);border-radius:14px;padding:.85rem .9rem;min-height:94px;
+    }
+    .ss-mini-label { color:var(--p-muted);font-size:.73rem;font-weight:700;margin-bottom:.34rem; }
+    .ss-mini-title {
+        color:var(--p-text);font-size:.88rem;font-weight:720;line-height:1.35;
+        display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;
+    }
+    .ss-mini-meta { margin-top:.48rem;color:#4b5563;font-size:.76rem; }
+
+    [data-testid="stMetric"] {
+        border-radius:14px!important;border:1px solid var(--p-line)!important;box-shadow:none!important;background:#fff!important;
+    }
+    [data-testid="stMetric"]:hover { transform:none!important;box-shadow:none!important; }
+    [data-testid="stForm"] {
+        background:#fff!important;border:1px solid var(--p-line)!important;border-radius:14px!important;
+        box-shadow:none!important;padding:.8rem .85rem .85rem!important;
+    }
+    [data-baseweb="tab-list"] {
+        background:transparent!important;border-bottom:1px solid var(--p-line);border-radius:0!important;padding:0!important;
+    }
+    [data-baseweb="tab"] {
+        border-radius:0!important;background:transparent!important;box-shadow:none!important;border-bottom:2px solid transparent;
+    }
+    [aria-selected="true"][data-baseweb="tab"] { border-bottom-color:var(--p-accent)!important; }
+    [data-testid="stDataFrame"] { box-shadow:none!important;border-radius:12px!important; }
+
+    @media(max-width:768px){
+        .ss-page-head{display:block}.ss-page-badge{display:inline-block;margin-top:.65rem}
+        .ss-home-strip{grid-template-columns:1fr}.ss-page-title{font-size:1.5rem}
+        .block-container{padding-top:.75rem!important}
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
 
 
 # =========================================================
@@ -1839,51 +1922,73 @@ for video in public_videos:
 # 10. 채널 상단
 # =========================================================
 
-st.success(
-    "✅ YouTube 채널 연결 완료!"
-)
-
-
-# =========================================================
-# V6.4 2차 — 실제 화면 전환 메뉴
-# =========================================================
-st.markdown("### 분석 화면")
-st.caption("원하는 기능을 선택하세요.")
-
-page = st.radio(
-    "화면 선택",
-    ["🏠 홈", "📈 성장 분석", "📊 채널 패턴", "🧪 운영", "📋 리포트", "🔎 영상 찾기"],
-    horizontal=True,
-    label_visibility="collapsed",
-    key="main_page_v64",
-)
-
 _page_help = {
-    "🏠 홈": "채널 핵심 상태와 공개 영상 성과 확인",
-    "📈 성장 분석": "채널 기준선과 영상별 실제 성장 흐름 비교",
-    "📊 채널 패턴": "최근 영상 묶음 · 요일 · 업로드 시간대별 실제 성과 비교",
-    "🧪 운영": "목표 · 영상 태그 · 성과 메모 · 실험 기록",
-    "📋 리포트": "주간 리포트 · 이상 변화 · 개인 최고기록",
-    "🔎 영상 찾기": "검색 · 전체 데이터 · TOP 순위 · Excel · 예약 영상",
+    "🏠 홈": "채널 핵심 상태와 최근 영상",
+    "📈 성장 분석": "성장상태 · 동일 나이 · 성장곡선",
+    "📊 채널 패턴": "최근 영상 · 요일 · 시간대 패턴",
+    "🧪 운영": "목표 · 태그 · 메모 · 실험",
+    "📋 리포트": "주간 변화 · 이상 감지 · 최고기록",
+    "🔎 영상 찾기": "검색 · 필터 · 전체 영상",
 }
 
-st.markdown("""
-<style>
-/* V7.3 menu readability */
-.stMarkdown p {
-    color: rgba(23, 25, 35, 0.92);
+_page_meta = {
+    "🏠 홈": ("OVERVIEW", "채널 대시보드", "지금 필요한 핵심 정보만 빠르게 확인합니다."),
+    "📈 성장 분석": ("GROWTH", "성장 분석", "스냅샷과 Analytics로 영상의 실제 성장 흐름을 비교합니다."),
+    "📊 채널 패턴": ("PATTERNS", "채널 패턴", "최근 업로드의 요일·시간대·성과 패턴을 실제 데이터로 비교합니다."),
+    "🧪 운영": ("WORKSPACE", "운영 기록", "목표, 영상 메모, 태그와 실험을 한곳에서 관리합니다."),
+    "📋 리포트": ("REPORTS", "리포트", "최근 변화, 이상 신호와 개인 최고기록을 정리합니다."),
+    "🔎 영상 찾기": ("LIBRARY", "영상 찾기", "전체 영상을 검색하고 조건별로 빠르게 좁혀봅니다."),
 }
-[data-testid="stAlert"] p {
-    color: rgba(23, 25, 35, 0.90) !important;
-}
-div[data-baseweb="select"] * {
-    color: rgba(23, 25, 35, 0.94) !important;
-}
-</style>
-""", unsafe_allow_html=True)
 
-st.caption(_page_help[page])
-st.divider()
+with st.sidebar:
+    st.markdown(
+        """
+        <div class="ss-side-brand">
+            <div class="ss-side-logo">▶</div>
+            <div class="ss-side-name">Shorts Scope</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        f"""
+        <div class="ss-channel-chip">
+            <div class="name">{channel_info['channel_name']}</div>
+            <div class="status">● YouTube 연결됨</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    st.caption("ANALYTICS")
+    page = st.radio(
+        "화면 선택",
+        ["🏠 홈", "📈 성장 분석", "📊 채널 패턴", "🧪 운영", "📋 리포트", "🔎 영상 찾기"],
+        label_visibility="collapsed",
+        key="main_page_v64",
+    )
+    st.markdown("---")
+    st.caption(_page_help[page])
+    st.link_button(
+        "개인정보처리방침",
+        "https://goldmoon123.github.io/alssulcut-dashboard/privacy.html",
+        use_container_width=True,
+    )
+
+_kicker, _page_title, _page_desc = _page_meta[page]
+st.markdown(
+    f"""
+    <div class="ss-page-head">
+        <div>
+            <div class="ss-page-kicker">{_kicker}</div>
+            <div class="ss-page-title">{_page_title}</div>
+            <div class="ss-page-desc">{_page_desc}</div>
+        </div>
+        <div class="ss-page-badge">읽기 전용 · 실제 데이터</div>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+
 
 # 각 메뉴가 독립적으로 실행되어도 필요한 공통 값
 today = datetime.now(KST).date()
@@ -1908,11 +2013,6 @@ def add_excel_table(ws, table_name):
 
 
 if page == "🏠 홈":
-    st.subheader(
-        f"📺 {channel_info['channel_name']}"
-    )
-    st.caption("채널 전체 상태와 공개 영상 핵심 성과를 한눈에 확인합니다.")
-
     c1, c2, c3 = st.columns(3)
 
     c1.metric(
@@ -1930,13 +2030,41 @@ if page == "🏠 홈":
         f"{len(public_videos):,}개"
     )
 
+    _home_recent = []
+    for _hv in public_videos:
+        _raw = _hv.get("published_raw")
+        if not _raw:
+            continue
+        try:
+            _hdt = datetime.fromisoformat(_raw.replace("Z", "+00:00")).astimezone(KST)
+            _home_recent.append((_hdt, _hv))
+        except Exception:
+            pass
+    _home_recent.sort(key=lambda x: x[0], reverse=True)
+    _home_recent = _home_recent[:3]
+
+    if _home_recent:
+        _cards = []
+        for _idx, (_hdt, _hv) in enumerate(_home_recent, start=1):
+            _title = str(_hv.get("title", "제목 없음")).replace("<", "&lt;").replace(">", "&gt;")
+            _cards.append(
+                f"""
+                <div class="ss-mini-card">
+                    <div class="ss-mini-label">최근 업로드 {_idx}</div>
+                    <div class="ss-mini-title">{_title}</div>
+                    <div class="ss-mini-meta">{_hdt.strftime('%m.%d %H:%M')} · {int(_hv.get('views',0) or 0):,}회</div>
+                </div>
+                """
+            )
+        st.markdown('<div class="ss-home-strip">' + ''.join(_cards) + '</div>', unsafe_allow_html=True)
+
     st.divider()
 
     # =========================================================
     # 홈 — 공개 영상 핵심 성과
     # =========================================================
 
-    st.subheader("🎯 공개 영상 핵심 성과")
+    st.markdown("### 채널 성과")
     st.caption("현재 공개 상태인 영상 전체의 누적 성과입니다.")
 
     if public_videos:
@@ -2005,7 +2133,7 @@ if page == "🏠 홈":
 
     st.divider()
 
-    st.markdown("### 📅 상세 분석")
+    st.markdown("### 상세 분석")
     st.caption("기간 성과·일별 차트·월간 달력·과거 일별 분석은 필요할 때만 펼쳐서 확인합니다.")
     show_home_details = st.toggle(
         "기간·달력 상세 보기",
@@ -3263,12 +3391,6 @@ if page == "🏠 홈" and show_home_details:
 
 
 if page == "📊 채널 패턴":
-    st.header("📊 채널 패턴")
-    st.caption(
-        "최근 업로드 영상의 실제 성과를 묶어서 비교합니다. "
-        "원인을 추측하지 않고 업로드 시점과 YouTube 데이터만 사용합니다."
-    )
-
     def _pattern_publish_dt(video):
         raw = video.get("published_raw")
         if not raw:
@@ -3466,12 +3588,6 @@ if page == "📊 채널 패턴":
 
 
 if page == "🧪 운영":
-    st.header("🧪 운영")
-    st.caption(
-        "영상의 실제 성과 데이터와 사용자가 직접 남긴 기록을 분리해서 관리합니다. "
-        "이 기록은 나중에 쇼마스터와 연결할 수 있도록 구조화합니다."
-    )
-
     try:
         _ops_channel_id = _connected_youtube_channel_id(youtube)
     except Exception:
@@ -3954,12 +4070,6 @@ if page == "🧪 운영":
 
 
 if page == "📋 리포트":
-    st.header("📋 리포트")
-    st.caption(
-        "YouTube 실제 데이터와 Shorts Scope 스냅샷만 사용합니다. "
-        "원인을 추측하지 않고 변화와 기록만 정리합니다."
-    )
-
     _report_today = today
     _report_end = _report_today - timedelta(days=1)
     _report_start = _report_end - timedelta(days=6)
@@ -3990,7 +4100,7 @@ if page == "📋 리포트":
     # =====================================================
     # 주간 리포트
     # =====================================================
-    st.markdown("### 🗓️ 최근 7일 리포트")
+    st.markdown("### 최근 7일")
     st.caption(
         f"{_report_start} ~ {_report_end} ↔ 이전 {_prev_start} ~ {_prev_end} · 오늘 제외"
     )
@@ -4139,7 +4249,7 @@ if page == "📋 리포트":
     # =====================================================
     # 이상 변화 감지
     # =====================================================
-    st.markdown("### 🚨 이상 변화 감지")
+    st.markdown("### 이상 변화 감지")
     st.caption(
         "스냅샷에서 확인되는 급상승·재상승·강한 하락만 표시합니다. "
         "원인 설명은 하지 않습니다."
@@ -4315,7 +4425,7 @@ if page == "📋 리포트":
     # =====================================================
     # 개인 최고기록
     # =====================================================
-    st.markdown("### 🏆 개인 최고기록")
+    st.markdown("### 개인 최고기록")
     st.caption(
         "현재 분석 가능한 공개 영상 기준입니다. "
         "YouTube 공식 기록이 아니라 Shorts Scope 내부 비교입니다."
@@ -4394,14 +4504,8 @@ if page == "📈 성장 분석":
     # 20. 자동 성과 리포트 V6
     # =========================================================
 
-    st.header("📈 성장 분석")
-    st.caption(f"🕒 데이터 조회 시각: {datetime.now(KST).strftime('%Y-%m-%d %H:%M KST')} · 최근 날짜의 Analytics는 지연될 수 있습니다.")
     st.caption(
-        "원인을 추측하지 않고 실제 데이터와 내 채널 기준선만 비교합니다. "
-        "성장상태 · 급상승/재상승 · 동일 나이 순위 · 여러 영상 성장곡선을 함께 확인합니다."
-    )
-    st.caption(
-        "조회수 100회 이상 + 영상별 Analytics가 집계된 공개 영상만 분석합니다."
+        f"데이터 조회 {datetime.now(KST).strftime('%m.%d %H:%M')} · 최근 Analytics는 집계가 지연될 수 있습니다."
     )
 
     report_videos = [
@@ -4466,7 +4570,7 @@ if page == "📈 성장 분석":
     # ---------------------------------------------------------
     # V7 — 자체 스냅샷 기준 시점 데이터
     # ---------------------------------------------------------
-    st.markdown("### ⏱️ V7 자체 스냅샷 기준 시점")
+    st.markdown("### 스냅샷 기준 시점")
     st.caption(
         "업로드 후 1h / 6h / 12h / 24h / 48h / 72h 시점의 실제 스냅샷을 사용합니다. "
         "기준 시점 근처 데이터가 없으면 0으로 채우지 않고 '데이터 부족'으로 표시합니다."
@@ -5617,11 +5721,6 @@ if page == "🔎 영상 찾기":
     # =========================================================
     # 21. 전체 영상 분석
     # =========================================================
-
-    st.subheader(
-        "🔎 전체 영상 분석"
-    )
-
 
     def format_video_upload_kst(video):
         """
