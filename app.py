@@ -2962,16 +2962,32 @@ if page == "📊 채널 패턴":
         if not _choices:
             _choices = [_max_recent]
 
-        _recent_n = st.segmented_control(
-            "최근 영상 범위",
-            options=_choices,
-            default=_choices[0],
-            format_func=lambda x: f"최근 {x}개",
-            key="v66_recent_video_count",
-        )
-        if not _recent_n:
-            _recent_n = _choices[0]
+        if (
+            "v72_applied_recent_n" not in st.session_state
+            or st.session_state.v72_applied_recent_n not in _choices
+        ):
+            st.session_state.v72_applied_recent_n = _choices[0]
 
+        with st.form("v72_pattern_range_form"):
+            _recent_n_input = st.radio(
+                "최근 영상 범위",
+                options=_choices,
+                index=_choices.index(st.session_state.v72_applied_recent_n),
+                format_func=lambda x: f"최근 {x}개",
+                horizontal=True,
+                key="v72_recent_video_count_input",
+            )
+            _apply_recent_n = st.form_submit_button(
+                "🔍 적용",
+                type="primary",
+                use_container_width=True,
+            )
+
+        if _apply_recent_n:
+            st.session_state.v72_applied_recent_n = _recent_n_input
+
+        _recent_n = st.session_state.v72_applied_recent_n
+        st.caption(f"현재 적용: 최근 {_recent_n}개")
         _recent = _pattern_videos[: int(_recent_n)]
         _recent_analytics = [v for v in _recent if v.get("_analytics_ready")]
 
@@ -3035,11 +3051,14 @@ if page == "📊 채널 패턴":
             st.dataframe(_weekday_df, hide_index=True, use_container_width=True)
             _weekday_chart = _weekday_df[_weekday_df["영상 수"] >= 2][["요일", "평균 조회수"]]
             if not _weekday_chart.empty:
-                st.bar_chart(
-                    _weekday_chart.set_index("요일"),
-                    use_container_width=True,
-                    height=260,
-                )
+                st.markdown("#### 평균 조회수 비교")
+                _weekday_max = max(int(x) for x in _weekday_chart["평균 조회수"].tolist()) or 1
+                for _, _row in _weekday_chart.iterrows():
+                    _label_col, _bar_col, _value_col = st.columns([1.2, 5, 1.4])
+                    _value = int(_row["평균 조회수"])
+                    _label_col.write(str(_row["요일"]))
+                    _bar_col.progress(min(max(_value / _weekday_max, 0.0), 1.0))
+                    _value_col.write(f"{_value:,}회")
             else:
                 st.caption("⏳ 요일별 비교를 하기에는 아직 표본이 부족합니다.")
 
@@ -3084,11 +3103,14 @@ if page == "📊 채널 패턴":
             st.dataframe(_band_df, hide_index=True, use_container_width=True)
             _band_chart = _band_df[_band_df["영상 수"] >= 2][["시간대", "평균 조회수"]]
             if not _band_chart.empty:
-                st.bar_chart(
-                    _band_chart.set_index("시간대"),
-                    use_container_width=True,
-                    height=260,
-                )
+                st.markdown("#### 평균 조회수 비교")
+                _band_max = max(int(x) for x in _band_chart["평균 조회수"].tolist()) or 1
+                for _, _row in _band_chart.iterrows():
+                    _label_col, _bar_col, _value_col = st.columns([1.8, 5, 1.4])
+                    _value = int(_row["평균 조회수"])
+                    _label_col.write(str(_row["시간대"]))
+                    _bar_col.progress(min(max(_value / _band_max, 0.0), 1.0))
+                    _value_col.write(f"{_value:,}회")
             else:
                 st.caption("⏳ 시간대별 비교를 하기에는 아직 표본이 부족합니다.")
 
@@ -3215,12 +3237,26 @@ if page == "🧪 운영":
                 reverse=True,
             )
 
-            _video_search = st.text_input(
-                "영상 검색",
-                placeholder="제목 일부 입력",
-                key="v67_video_note_search",
-            ).strip().lower()
+            if "v72_ops_applied_search" not in st.session_state:
+                st.session_state.v72_ops_applied_search = ""
 
+            with st.form("v72_ops_video_search_form"):
+                _video_search_input = st.text_input(
+                    "영상 검색",
+                    value=st.session_state.v72_ops_applied_search,
+                    placeholder="제목 일부 입력",
+                    key="v72_ops_video_search_input",
+                )
+                _ops_search_submit = st.form_submit_button(
+                    "🔍 검색",
+                    type="primary",
+                    use_container_width=True,
+                )
+
+            if _ops_search_submit:
+                st.session_state.v72_ops_applied_search = _video_search_input.strip().lower()
+
+            _video_search = st.session_state.v72_ops_applied_search
             _ops_filtered = [
                 v for v in _ops_public
                 if not _video_search
@@ -3250,13 +3286,41 @@ if page == "🧪 운영":
                     _video_options.append(_key)
                     _video_option_map[_key] = _v
 
-                _selected_video_key = st.selectbox(
-                    "기록할 영상",
-                    _video_options,
-                    format_func=lambda x: x.rsplit(" [", 1)[0],
-                    key="v67_video_note_select",
+                _available_ids = [v.get("video_id") for v in _ops_filtered]
+                if (
+                    "v72_ops_applied_video_id" not in st.session_state
+                    or st.session_state.v72_ops_applied_video_id not in _available_ids
+                ):
+                    st.session_state.v72_ops_applied_video_id = _available_ids[0]
+
+                _default_key = next(
+                    k for k, v in _video_option_map.items()
+                    if v.get("video_id") == st.session_state.v72_ops_applied_video_id
                 )
-                _selected_video = _video_option_map[_selected_video_key]
+
+                with st.form("v72_ops_video_open_form"):
+                    _selected_video_key_input = st.selectbox(
+                        "기록할 영상",
+                        _video_options,
+                        index=_video_options.index(_default_key),
+                        format_func=lambda x: x.rsplit(" [", 1)[0],
+                        key="v72_ops_video_select_input",
+                    )
+                    _open_video_submit = st.form_submit_button(
+                        "📂 선택한 영상 열기",
+                        type="primary",
+                        use_container_width=True,
+                    )
+
+                if _open_video_submit:
+                    st.session_state.v72_ops_applied_video_id = (
+                        _video_option_map[_selected_video_key_input].get("video_id")
+                    )
+
+                _selected_video = next(
+                    v for v in _ops_filtered
+                    if v.get("video_id") == st.session_state.v72_ops_applied_video_id
+                )
                 _selected_video_id = _selected_video.get("video_id")
 
                 _note_fetch = _supabase_table_get(
@@ -4123,13 +4187,41 @@ if page == "📈 성장 분석":
                 _v7_lookup[_key] = _v
                 _v7_options.append(_key)
 
-            _v7_selected = st.selectbox(
-                "기준 시점 확인할 영상",
-                _v7_options,
-                format_func=lambda x: x.rsplit(" [", 1)[0],
-                key="v7_snapshot_milestone_video",
+            _v7_available_ids = [v.get("video_id") for _, v in _v7_recent_videos]
+            if (
+                "v72_v7_applied_video_id" not in st.session_state
+                or st.session_state.v72_v7_applied_video_id not in _v7_available_ids
+            ):
+                st.session_state.v72_v7_applied_video_id = _v7_available_ids[0]
+
+            _v7_default_key = next(
+                k for k, v in _v7_lookup.items()
+                if v.get("video_id") == st.session_state.v72_v7_applied_video_id
             )
-            _v7_video = _v7_lookup[_v7_selected]
+
+            with st.form("v72_v7_video_lookup_form"):
+                _v7_selected_input = st.selectbox(
+                    "기준 시점 확인할 영상",
+                    _v7_options,
+                    index=_v7_options.index(_v7_default_key),
+                    format_func=lambda x: x.rsplit(" [", 1)[0],
+                    key="v72_v7_snapshot_video_input",
+                )
+                _v7_lookup_submit = st.form_submit_button(
+                    "🔍 조회",
+                    type="primary",
+                    use_container_width=True,
+                )
+
+            if _v7_lookup_submit:
+                st.session_state.v72_v7_applied_video_id = (
+                    _v7_lookup[_v7_selected_input].get("video_id")
+                )
+
+            _v7_video = next(
+                v for _, v in _v7_recent_videos
+                if v.get("video_id") == st.session_state.v72_v7_applied_video_id
+            )
             _v7_rows = _v7_grouped.get(_v7_video.get("video_id"), [])
 
             if _v7_rows:
@@ -4199,43 +4291,68 @@ if page == "📈 성장 분석":
     # -----------------------------
     st.markdown("### 📈 채널 추세")
 
-    trend_option = st.selectbox(
-        "추세 분석 기간",
-        ["최근 7일", "최근 14일", "최근 28일", "직접 선택"],
-        key="trend_period_option_v61",
-    )
-
     trend_last_day = today - timedelta(days=1)
 
-    if trend_option == "최근 7일":
-        trend_end = trend_last_day
-        trend_start = trend_end - timedelta(days=6)
-    elif trend_option == "최근 14일":
-        trend_end = trend_last_day
-        trend_start = trend_end - timedelta(days=13)
-    elif trend_option == "최근 28일":
-        trend_end = trend_last_day
-        trend_start = trend_end - timedelta(days=27)
-    else:
-        tc1, tc2 = st.columns(2)
-        with tc1:
-            trend_start = st.date_input(
-                "추세 시작일",
-                value=trend_last_day - timedelta(days=6),
-                max_value=trend_last_day,
-                key="trend_start_v61",
-            )
-        with tc2:
-            trend_end = st.date_input(
-                "추세 종료일",
-                value=trend_last_day,
-                max_value=trend_last_day,
-                key="trend_end_v61",
-            )
+    if "v72_trend_applied_option" not in st.session_state:
+        st.session_state.v72_trend_applied_option = "최근 7일"
+        st.session_state.v72_trend_applied_start = trend_last_day - timedelta(days=6)
+        st.session_state.v72_trend_applied_end = trend_last_day
 
-    if trend_start > trend_end:
-        st.warning("시작일이 종료일보다 늦어 종료일 기준으로 맞췄습니다.")
-        trend_start = trend_end
+    _trend_options = ["최근 7일", "최근 14일", "최근 28일", "직접 선택"]
+
+    with st.form("v72_trend_form"):
+        trend_option_input = st.selectbox(
+            "추세 분석 기간",
+            _trend_options,
+            index=_trend_options.index(st.session_state.v72_trend_applied_option),
+            key="v72_trend_period_input",
+        )
+        _tc1, _tc2 = st.columns(2)
+        with _tc1:
+            trend_start_input = st.date_input(
+                "직접 선택 시작일",
+                value=st.session_state.v72_trend_applied_start,
+                max_value=trend_last_day,
+                key="v72_trend_start_input",
+            )
+        with _tc2:
+            trend_end_input = st.date_input(
+                "직접 선택 종료일",
+                value=st.session_state.v72_trend_applied_end,
+                max_value=trend_last_day,
+                key="v72_trend_end_input",
+            )
+        _trend_submit = st.form_submit_button(
+            "🔍 추세 조회",
+            type="primary",
+            use_container_width=True,
+        )
+
+    if _trend_submit:
+        if trend_option_input == "최근 7일":
+            _new_end = trend_last_day
+            _new_start = _new_end - timedelta(days=6)
+        elif trend_option_input == "최근 14일":
+            _new_end = trend_last_day
+            _new_start = _new_end - timedelta(days=13)
+        elif trend_option_input == "최근 28일":
+            _new_end = trend_last_day
+            _new_start = _new_end - timedelta(days=27)
+        else:
+            _new_start = trend_start_input
+            _new_end = trend_end_input
+
+        if _new_start > _new_end:
+            _new_start = _new_end
+
+        st.session_state.v72_trend_applied_option = trend_option_input
+        st.session_state.v72_trend_applied_start = _new_start
+        st.session_state.v72_trend_applied_end = _new_end
+
+    trend_option = st.session_state.v72_trend_applied_option
+    trend_start = st.session_state.v72_trend_applied_start
+    trend_end = st.session_state.v72_trend_applied_end
+    st.caption(f"현재 적용: {trend_start} ~ {trend_end}")
 
     trend_days = (trend_end - trend_start).days + 1
     trend_prev_end = trend_start - timedelta(days=1)
@@ -4616,20 +4733,45 @@ if page == "📈 성장 분석":
                 _curve_lookup[_label] = _video
 
             _default_curves = _curve_options[: min(3, len(_curve_options))]
-            _selected_curves = st.multiselect(
-                "비교할 영상",
-                options=_curve_options,
-                default=_default_curves,
-                max_selections=5,
-                key="v65_multi_growth_curve_select",
-            )
-            _curve_days = st.selectbox(
-                "비교 구간",
-                [7, 14, 28],
-                index=2,
-                format_func=lambda x: f"D+0 ~ D+{x}",
-                key="v65_multi_growth_curve_days",
-            )
+            if "v72_curve_applied_videos" not in st.session_state:
+                st.session_state.v72_curve_applied_videos = _default_curves
+                st.session_state.v72_curve_applied_days = 28
+
+            _valid_saved_curves = [
+                x for x in st.session_state.v72_curve_applied_videos
+                if x in _curve_options
+            ]
+            if not _valid_saved_curves:
+                _valid_saved_curves = _default_curves
+                st.session_state.v72_curve_applied_videos = _valid_saved_curves
+
+            with st.form("v72_multi_curve_form"):
+                _selected_curves_input = st.multiselect(
+                    "비교할 영상",
+                    options=_curve_options,
+                    default=_valid_saved_curves,
+                    max_selections=5,
+                    key="v72_multi_growth_curve_input",
+                )
+                _curve_days_input = st.selectbox(
+                    "비교 구간",
+                    [7, 14, 28],
+                    index=[7, 14, 28].index(st.session_state.v72_curve_applied_days),
+                    format_func=lambda x: f"D+0 ~ D+{x}",
+                    key="v72_multi_growth_days_input",
+                )
+                _curve_submit = st.form_submit_button(
+                    "📈 선택한 영상 비교",
+                    type="primary",
+                    use_container_width=True,
+                )
+
+            if _curve_submit:
+                st.session_state.v72_curve_applied_videos = _selected_curves_input
+                st.session_state.v72_curve_applied_days = _curve_days_input
+
+            _selected_curves = st.session_state.v72_curve_applied_videos
+            _curve_days = st.session_state.v72_curve_applied_days
 
             _multi_rows = {}
             for _label in _selected_curves:
@@ -4666,40 +4808,76 @@ if page == "📈 성장 분석":
         # ---------------------------------------------------------
         st.markdown("#### 🔎 비교할 영상 찾기")
 
-        _filter_search = st.text_input(
-            "영상 제목 검색",
-            placeholder="제목 일부를 입력하세요",
-            key="v661_compare_search",
-        ).strip().lower()
+        if "v72_compare_applied" not in st.session_state:
+            st.session_state.v72_compare_applied = {
+                "search": "",
+                "period": "전체",
+                "state": "전체",
+                "sort": "최신순",
+            }
 
-        _fc1, _fc2, _fc3 = st.columns(3)
-        with _fc1:
-            _filter_period = st.selectbox(
-                "기간",
-                ["전체", "최근 7일", "최근 30일", "최근 90일"],
-                key="v661_compare_period",
+        _compare_saved = st.session_state.v72_compare_applied
+        _period_options = ["전체", "최근 7일", "최근 30일", "최근 90일"]
+        _state_options = [
+            "전체",
+            "🚀 급상승",
+            "🔥 재상승",
+            "↗ 상승",
+            "→ 유지",
+            "↘ 하락",
+            "💤 정체",
+            "⏳ 데이터 축적 중",
+        ]
+        _sort_options = ["최신순", "조회수순", "성장속도순", "동일 나이 순위순"]
+
+        with st.form("v72_compare_filter_form"):
+            _filter_search_input = st.text_input(
+                "영상 제목 검색",
+                value=_compare_saved["search"],
+                placeholder="제목 일부를 입력하세요",
+                key="v72_compare_search_input",
             )
-        with _fc2:
-            _filter_state = st.selectbox(
-                "성장 상태",
-                [
-                    "전체",
-                    "🚀 급상승",
-                    "🔥 재상승",
-                    "↗ 상승",
-                    "→ 유지",
-                    "↘ 하락",
-                    "💤 정체",
-                    "⏳ 데이터 축적 중",
-                ],
-                key="v661_compare_state",
+            _fc1, _fc2, _fc3 = st.columns(3)
+            with _fc1:
+                _filter_period_input = st.selectbox(
+                    "기간",
+                    _period_options,
+                    index=_period_options.index(_compare_saved["period"]),
+                    key="v72_compare_period_input",
+                )
+            with _fc2:
+                _filter_state_input = st.selectbox(
+                    "성장 상태",
+                    _state_options,
+                    index=_state_options.index(_compare_saved["state"]),
+                    key="v72_compare_state_input",
+                )
+            with _fc3:
+                _filter_sort_input = st.selectbox(
+                    "정렬",
+                    _sort_options,
+                    index=_sort_options.index(_compare_saved["sort"]),
+                    key="v72_compare_sort_input",
+                )
+            _compare_search_submit = st.form_submit_button(
+                "🔍 검색",
+                type="primary",
+                use_container_width=True,
             )
-        with _fc3:
-            _filter_sort = st.selectbox(
-                "정렬",
-                ["최신순", "조회수순", "성장속도순", "동일 나이 순위순"],
-                key="v661_compare_sort",
-            )
+
+        if _compare_search_submit:
+            st.session_state.v72_compare_applied = {
+                "search": _filter_search_input.strip().lower(),
+                "period": _filter_period_input,
+                "state": _filter_state_input,
+                "sort": _filter_sort_input,
+            }
+
+        _compare_saved = st.session_state.v72_compare_applied
+        _filter_search = _compare_saved["search"]
+        _filter_period = _compare_saved["period"]
+        _filter_state = _compare_saved["state"]
+        _filter_sort = _compare_saved["sort"]
 
         def _compare_filter_meta(_video):
             _raw = _video.get("published_raw")
@@ -4838,13 +5016,44 @@ if page == "📈 성장 분석":
                 _option_lookup[_key] = _item
                 _option_labels.append(_key)
 
-            _selected_key = st.selectbox(
-                "상세 분석할 영상",
-                options=_option_labels,
-                format_func=lambda x: x.rsplit(" [", 1)[0],
-                key="v661_compare_selected_video",
+            _filtered_ids = [
+                _item["video"].get("video_id")
+                for _item in _filtered_items
+            ]
+            if (
+                "v72_compare_applied_video_id" not in st.session_state
+                or st.session_state.v72_compare_applied_video_id not in _filtered_ids
+            ):
+                st.session_state.v72_compare_applied_video_id = _filtered_ids[0]
+
+            _detail_default_key = next(
+                k for k, item in _option_lookup.items()
+                if item["video"].get("video_id") == st.session_state.v72_compare_applied_video_id
             )
-            _selected_item = _option_lookup[_selected_key]
+
+            with st.form("v72_compare_detail_form"):
+                _selected_key_input = st.selectbox(
+                    "상세 분석할 영상",
+                    options=_option_labels,
+                    index=_option_labels.index(_detail_default_key),
+                    format_func=lambda x: x.rsplit(" [", 1)[0],
+                    key="v72_compare_selected_video_input",
+                )
+                _detail_submit = st.form_submit_button(
+                    "📊 선택한 영상 분석 보기",
+                    type="primary",
+                    use_container_width=True,
+                )
+
+            if _detail_submit:
+                st.session_state.v72_compare_applied_video_id = (
+                    _option_lookup[_selected_key_input]["video"].get("video_id")
+                )
+
+            _selected_item = next(
+                item for item in _filtered_items
+                if item["video"].get("video_id") == st.session_state.v72_compare_applied_video_id
+            )
             _selected_video = _selected_item["video"]
             _original_rank = next(
                 (
@@ -5201,74 +5410,7 @@ if page == "🔎 영상 찾기":
 
     st.caption(
         "조건을 정한 뒤 검색 버튼을 눌러 결과를 확인하세요. "
-        "검색 전에는 기존 결과가 그대로 유지됩니다."
-    )
-
-    # 조회수 조건은 바꾸면 입력칸만 바뀌고, 실제 결과는 검색 버튼을 눌러야 적용됩니다.
-    filter_mode_input = st.radio(
-        "조회수 조건",
-        ["전체", "이상", "이하", "범위"],
-        horizontal=True,
-        key="views_filter_mode_input",
-    )
-
-    filter_min_input = 0
-    filter_max_input = 0
-    filter_views_input = 5000
-
-    if filter_mode_input in ["이상", "이하"]:
-        filter_views_input = st.number_input(
-            "기준 조회수",
-            min_value=0,
-            value=5000,
-            step=500,
-            key="views_filter_value_input",
-        )
-    elif filter_mode_input == "범위":
-        range_c1, range_c2 = st.columns(2)
-        with range_c1:
-            filter_min_input = st.number_input(
-                "최소 조회수",
-                min_value=0,
-                value=1000,
-                step=500,
-                key="views_filter_min_input",
-            )
-        with range_c2:
-            filter_max_input = st.number_input(
-                "최대 조회수",
-                min_value=0,
-                value=10000,
-                step=500,
-                key="views_filter_max_input",
-            )
-
-    filter_c1, filter_c2 = st.columns(2)
-    with filter_c1:
-        status_options = ["전체"] + sorted(df["상태"].dropna().astype(str).unique().tolist())
-        filter_status_input = st.selectbox(
-            "공개 상태",
-            status_options,
-            key="video_status_filter_input",
-        )
-    with filter_c2:
-        title_query_input = st.text_input(
-            "제목 검색",
-            placeholder="예: 비버, 화산, 교통사고",
-            key="video_title_filter_input",
-        )
-
-    sort_option_input = st.selectbox(
-        "정렬",
-        [
-            "조회수 높은 순",
-            "조회수 낮은 순",
-            "최신 업로드 순",
-            "오래된 업로드 순",
-            "평균 시청률 높은 순",
-            "구독 증가 높은 순",
-        ],
-        key="video_sort_input",
+        "입력값을 바꾸기만 해서는 결과가 변경되지 않습니다."
     )
 
     if "applied_video_filter" not in st.session_state:
@@ -5282,12 +5424,88 @@ if page == "🔎 영상 찾기":
             "sort": "조회수 높은 순",
         }
 
-    if st.button(
-        "🔍 검색",
-        type="primary",
-        use_container_width=True,
-        key="apply_video_filter_button",
-    ):
+    _saved_filter = st.session_state.applied_video_filter
+    _filter_modes = ["전체", "이상", "이하", "범위"]
+    _sort_options_all = [
+        "조회수 높은 순",
+        "조회수 낮은 순",
+        "최신 업로드 순",
+        "오래된 업로드 순",
+        "평균 시청률 높은 순",
+        "구독 증가 높은 순",
+    ]
+    status_options = ["전체"] + sorted(df["상태"].dropna().astype(str).unique().tolist())
+    _saved_status = (
+        _saved_filter["status"]
+        if _saved_filter["status"] in status_options
+        else "전체"
+    )
+
+    with st.form("v72_video_search_form"):
+        filter_mode_input = st.radio(
+            "조회수 조건",
+            _filter_modes,
+            index=_filter_modes.index(_saved_filter["mode"]),
+            horizontal=True,
+            key="v72_views_filter_mode_input",
+        )
+
+        _vc1, _vc2, _vc3 = st.columns(3)
+        with _vc1:
+            filter_views_input = st.number_input(
+                "기준 조회수 (이상/이하)",
+                min_value=0,
+                value=int(_saved_filter["views"]),
+                step=500,
+                key="v72_views_filter_value_input",
+            )
+        with _vc2:
+            filter_min_input = st.number_input(
+                "최소 조회수 (범위)",
+                min_value=0,
+                value=int(_saved_filter["min_views"]),
+                step=500,
+                key="v72_views_filter_min_input",
+            )
+        with _vc3:
+            filter_max_input = st.number_input(
+                "최대 조회수 (범위)",
+                min_value=0,
+                value=int(_saved_filter["max_views"]),
+                step=500,
+                key="v72_views_filter_max_input",
+            )
+
+        _fc1, _fc2 = st.columns(2)
+        with _fc1:
+            filter_status_input = st.selectbox(
+                "공개 상태",
+                status_options,
+                index=status_options.index(_saved_status),
+                key="v72_video_status_filter_input",
+            )
+        with _fc2:
+            title_query_input = st.text_input(
+                "제목 검색",
+                value=_saved_filter["title"],
+                placeholder="예: 비버, 화산, 교통사고",
+                key="v72_video_title_filter_input",
+            )
+
+        sort_option_input = st.selectbox(
+            "정렬",
+            _sort_options_all,
+            index=_sort_options_all.index(_saved_filter["sort"]),
+            key="v72_video_sort_input",
+        )
+
+        _video_filter_submit = st.form_submit_button(
+            "🔍 검색",
+            type="primary",
+            use_container_width=True,
+        )
+
+    if _video_filter_submit:
         st.session_state.applied_video_filter = {
             "mode": filter_mode_input,
             "views": int(filter_views_input),
@@ -5500,13 +5718,27 @@ if page == "🔎 영상 찾기":
     # =========================================================
 
     with st.expander("🏆 공개 영상 TOP 랭킹 보기", expanded=False):
-        rank_limit = st.radio(
-            "표시 개수",
-            [5, 10, 20],
-            horizontal=True,
-            format_func=lambda n: f"TOP {n}",
-            key="ranking_display_count",
-        )
+        if "v72_applied_rank_limit" not in st.session_state:
+            st.session_state.v72_applied_rank_limit = 5
+
+        with st.form("v72_rank_limit_form"):
+            _rank_limit_input = st.radio(
+                "표시 개수",
+                [5, 10, 20],
+                index=[5, 10, 20].index(st.session_state.v72_applied_rank_limit),
+                horizontal=True,
+                format_func=lambda n: f"TOP {n}",
+                key="v72_ranking_display_count_input",
+            )
+            _rank_limit_submit = st.form_submit_button(
+                "🔍 적용",
+                use_container_width=True,
+            )
+
+        if _rank_limit_submit:
+            st.session_state.v72_applied_rank_limit = _rank_limit_input
+
+        rank_limit = st.session_state.v72_applied_rank_limit
 
         rank_tab1, rank_tab2, rank_tab3, rank_tab4 = st.tabs(
             ["👁️ 조회수", "📊 시청률", "👤 구독전환", "👍 좋아요율"]
