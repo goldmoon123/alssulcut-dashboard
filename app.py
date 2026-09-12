@@ -1447,6 +1447,87 @@ st.markdown(
 
 
 # =========================================================
+# V7.6 — Product Experience Upgrade
+# 판단/신뢰/우선순위를 먼저 보이게 합니다.
+# =========================================================
+st.markdown(
+    """
+    <style>
+    :root {
+        --v76-text:#101828; --v76-muted:#667085; --v76-line:#eaecf0;
+        --v76-surface:#ffffff; --v76-bg:#f7f8fa; --v76-brand:#ff4d5a;
+        --v76-positive:#067647; --v76-positive-bg:#ecfdf3; --v76-positive-line:#abefc6;
+        --v76-negative:#b42318; --v76-negative-bg:#fef3f2; --v76-negative-line:#fecdca;
+        --v76-warning:#b54708; --v76-warning-bg:#fffaeb; --v76-warning-line:#fedf89;
+        --v76-info:#175cd3; --v76-info-bg:#eff8ff; --v76-info-line:#b2ddff;
+        --v76-neutral:#475467; --v76-neutral-bg:#f2f4f7; --v76-neutral-line:#d0d5dd;
+    }
+    .stApp { background:var(--v76-bg)!important; }
+    .block-container { max-width:1240px!important; }
+    .ss-page-head { margin-bottom:1.35rem!important; }
+    .ss-page-title { font-size:1.72rem!important; }
+    .ss-page-desc { max-width:680px!important; }
+
+    .v76-kpi-grid { display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.8rem;margin:.55rem 0 1.15rem; }
+    .v76-kpi { background:#fff;border:1px solid var(--v76-line);border-radius:16px;padding:1rem 1.05rem;min-height:126px;display:flex;flex-direction:column;justify-content:space-between; }
+    .v76-kpi-label { color:var(--v76-muted);font-size:.78rem;font-weight:700; }
+    .v76-kpi-value { color:var(--v76-text);font-size:1.62rem;line-height:1.08;letter-spacing:-.035em;font-weight:820;margin:.38rem 0 .28rem; }
+    .v76-kpi-foot { display:flex;align-items:center;gap:.42rem;color:var(--v76-muted);font-size:.75rem;line-height:1.3; }
+
+    .v76-badge { display:inline-flex;align-items:center;border-radius:999px;padding:.25rem .48rem;font-size:.7rem;line-height:1;font-weight:800;white-space:nowrap;border:1px solid var(--v76-neutral-line);background:var(--v76-neutral-bg);color:var(--v76-neutral); }
+    .v76-positive { color:var(--v76-positive)!important;background:var(--v76-positive-bg)!important;border-color:var(--v76-positive-line)!important; }
+    .v76-negative { color:var(--v76-negative)!important;background:var(--v76-negative-bg)!important;border-color:var(--v76-negative-line)!important; }
+    .v76-warning { color:var(--v76-warning)!important;background:var(--v76-warning-bg)!important;border-color:var(--v76-warning-line)!important; }
+    .v76-info { color:var(--v76-info)!important;background:var(--v76-info-bg)!important;border-color:var(--v76-info-line)!important; }
+    .v76-neutral { color:var(--v76-neutral)!important;background:var(--v76-neutral-bg)!important;border-color:var(--v76-neutral-line)!important; }
+
+    .v76-brief { background:#111318;color:#f8fafc;border-radius:17px;padding:1rem 1.1rem;margin:.15rem 0 1.25rem;display:flex;gap:.8rem;align-items:flex-start; }
+    .v76-brief-dot { width:9px;height:9px;border-radius:50%;background:var(--v76-brand);margin-top:.38rem;flex:0 0 auto;box-shadow:0 0 0 5px rgba(255,77,90,.12); }
+    .v76-brief-kicker { color:#98a2b3;font-size:.69rem;font-weight:800;letter-spacing:.09em;margin-bottom:.3rem; }
+    .v76-brief-text { font-size:.94rem;font-weight:650;line-height:1.52;letter-spacing:-.01em; }
+
+    .v76-insight-grid { display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.8rem;margin:.5rem 0 1.2rem; }
+    .v76-insight { background:#fff;border:1px solid var(--v76-line);border-radius:15px;padding:.9rem .95rem;min-height:118px; }
+    .v76-insight-top { display:flex;justify-content:space-between;align-items:center;gap:.6rem;margin-bottom:.55rem; }
+    .v76-insight-label { color:var(--v76-muted);font-size:.73rem;font-weight:750; }
+    .v76-insight-value { color:var(--v76-text);font-size:1.12rem;font-weight:820;letter-spacing:-.025em;line-height:1.25; }
+    .v76-insight-desc { color:var(--v76-muted);font-size:.75rem;line-height:1.45;margin-top:.38rem; }
+
+    .v76-video-grid { display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.85rem;margin:.5rem 0 1.25rem; }
+    .v76-video-card { background:#fff;border:1px solid var(--v76-line);border-radius:16px;overflow:hidden;min-width:0; }
+    .v76-video-thumb { width:100%;aspect-ratio:16/9;object-fit:cover;display:block;background:#eef1f5; }
+    .v76-video-body { padding:.8rem .85rem .85rem; }
+    .v76-video-badges { display:flex;flex-wrap:wrap;gap:.35rem;margin-bottom:.55rem; }
+    .v76-video-title { color:var(--v76-text);font-size:.88rem;font-weight:760;line-height:1.38;min-height:2.45em;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden; }
+    .v76-video-meta { display:flex;justify-content:space-between;gap:.45rem;margin-top:.62rem;color:var(--v76-muted);font-size:.73rem; }
+    .v76-video-gain { font-weight:800;color:var(--v76-text); }
+
+    .v76-empty { border:1px dashed #cfd4dc;background:#fbfcfe;border-radius:15px;padding:1rem;margin:.45rem 0 1rem; }
+    .v76-empty-title { color:var(--v76-text);font-size:.86rem;font-weight:780; }
+    .v76-empty-desc { color:var(--v76-muted);font-size:.76rem;line-height:1.5;margin-top:.32rem; }
+
+    .v76-rank-grid { display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.75rem;margin:.45rem 0 1rem; }
+    .v76-rank-card { background:#fff;border:1px solid var(--v76-line);border-radius:14px;padding:.85rem .9rem; }
+    .v76-rank-no { color:var(--v76-brand);font-size:.72rem;font-weight:850; }
+    .v76-rank-title { font-weight:750;font-size:.82rem;line-height:1.38;margin:.28rem 0 .5rem;min-height:2.25em; }
+    .v76-rank-value { font-size:1.12rem;font-weight:820;letter-spacing:-.025em; }
+    .v76-rank-meta { color:var(--v76-muted);font-size:.72rem;margin-top:.28rem; }
+
+    [data-testid="stFormSubmitButton"] button { background:#fff!important;color:#344054!important;border:1px solid #d0d5dd!important; }
+    [data-testid="stFormSubmitButton"] button:hover { background:#f9fafb!important;color:#101828!important;border-color:#98a2b3!important; }
+
+    @media(max-width:900px){
+        .v76-kpi-grid,.v76-insight-grid,.v76-video-grid,.v76-rank-grid { grid-template-columns:1fr!important; }
+        .v76-kpi { min-height:104px; }
+        .v76-video-title { min-height:auto; }
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+
+# =========================================================
 # 2. OAuth 설정
 # =========================================================
 
@@ -1965,6 +2046,7 @@ with st.sidebar:
     page = st.radio(
         "화면 선택",
         ["🏠 홈", "📈 성장 분석", "📊 채널 패턴", "🧪 운영", "📋 리포트", "🔎 영상 찾기"],
+        format_func=lambda x: x.split(" ", 1)[1] if " " in x else x,
         label_visibility="collapsed",
         key="main_page_v64",
     )
@@ -2220,50 +2302,98 @@ if page == "🏠 홈":
     )
 
     # -----------------------------
-    # 1) 오늘의 상태
+    # 1) 오늘의 상태 + 팩트 브리핑
     # -----------------------------
+    _special_count = sum(
+        1
+        for x in _home_watch_candidates
+        if x["event"].get("label") in ("🚀 급상승", "🔥 재상승")
+    )
+
+    _brief_parts = []
+    if _home_views_change is not None:
+        if _home_views_change > 0:
+            _brief_parts.append(f"최근 7일 조회수는 이전 7일보다 {_home_views_change:.1f}% 높습니다.")
+        elif _home_views_change < 0:
+            _brief_parts.append(f"최근 7일 조회수는 이전 7일보다 {abs(_home_views_change):.1f}% 낮습니다.")
+        else:
+            _brief_parts.append("최근 7일 조회수는 이전 7일과 비슷한 수준입니다.")
+    if _home_recent10:
+        _brief_parts.append(
+            f"최근 {len(_home_recent10)}개 영상 중 {_home_below_median}개가 "
+            f"채널 중앙 조회수 {_home_median_views:,.0f}회 아래입니다."
+        )
+    if _special_count:
+        _brief_parts.append(f"현재 급상승·재상승으로 감지된 영상은 {_special_count}개입니다.")
+    else:
+        _brief_parts.append("현재 급상승·재상승으로 감지된 영상은 없습니다.")
+
+    _brief_text = " ".join(_brief_parts) or "현재 비교할 데이터가 충분히 쌓이는 중입니다."
+
+    st.markdown(
+        f"""
+        <div class="v76-brief">
+            <div class="v76-brief-dot"></div>
+            <div>
+                <div class="v76-brief-kicker">TODAY BRIEF</div>
+                <div class="v76-brief-text">{_brief_text}</div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
     st.markdown("### 오늘의 채널 상태")
 
-    _s1, _s2, _s3 = st.columns(3)
+    if _home_views_change is None:
+        _views_badge_cls, _views_badge = "v76-info", "집계 중"
+        _views_value = f"{int(_home_week_now.get('views', 0) or 0):,}회" if _home_week_now else "데이터 축적 중"
+        _views_foot = "이전 7일 비교값 대기"
+    elif _home_views_change > 0:
+        _views_badge_cls, _views_badge = "v76-positive", f"↑ {_home_views_change:.1f}%"
+        _views_value = f"{int(_home_week_now.get('views', 0) or 0):,}회"
+        _views_foot = "이전 7일 대비"
+    elif _home_views_change < 0:
+        _views_badge_cls, _views_badge = "v76-negative", f"↓ {abs(_home_views_change):.1f}%"
+        _views_value = f"{int(_home_week_now.get('views', 0) or 0):,}회"
+        _views_foot = "이전 7일 대비"
+    else:
+        _views_badge_cls, _views_badge = "v76-neutral", "→ 0.0%"
+        _views_value = f"{int(_home_week_now.get('views', 0) or 0):,}회"
+        _views_foot = "이전 7일 대비"
 
-    with _s1:
-        if _home_week_now and _home_views_change is not None:
-            _direction = "↑" if _home_views_change > 0 else "↓" if _home_views_change < 0 else "→"
-            st.metric(
-                "최근 7일 조회수",
-                f"{int(_home_week_now.get('views', 0) or 0):,}회",
-                f"{_direction} {abs(_home_views_change):.1f}% · 이전 7일 대비",
-            )
-        elif _home_week_now:
-            st.metric(
-                "최근 7일 조회수",
-                f"{int(_home_week_now.get('views', 0) or 0):,}회",
-                "이전 기간 비교 데이터 부족",
-            )
-        else:
-            st.metric(
-                "최근 7일 조회수",
-                "⏳ 집계 중",
-            )
+    _below_ratio = (_home_below_median / len(_home_recent10)) if _home_recent10 else 0
+    if not _home_recent10:
+        _median_badge_cls, _median_badge = "v76-info", "축적 중"
+    elif _below_ratio >= 0.7:
+        _median_badge_cls, _median_badge = "v76-warning", "확인 필요"
+    elif _below_ratio <= 0.3:
+        _median_badge_cls, _median_badge = "v76-positive", "양호"
+    else:
+        _median_badge_cls, _median_badge = "v76-neutral", "중립"
 
-    with _s2:
-        st.metric(
-            "최근 10개 중 중앙값 이하",
-            f"{_home_below_median}개",
-            f"채널 중앙값 {_home_median_views:,.0f}회 기준",
-        )
+    _special_badge_cls = "v76-positive" if _special_count > 0 else "v76-neutral"
+    _special_badge = "감지됨" if _special_count > 0 else "없음"
 
-    with _s3:
-        _special_count = sum(
-            1
-            for x in _home_watch_candidates
-            if x["event"].get("label") in ("🚀 급상승", "🔥 재상승")
-        )
-        st.metric(
-            "현재 특이 성장",
-            f"{_special_count}개",
-            "급상승·재상승 감지 기준",
-        )
+    st.markdown(
+        f"""
+        <div class="v76-kpi-grid">
+            <div class="v76-kpi">
+                <div><div class="v76-kpi-label">최근 7일 조회수</div><div class="v76-kpi-value">{_views_value}</div></div>
+                <div class="v76-kpi-foot"><span class="v76-badge {_views_badge_cls}">{_views_badge}</span><span>{_views_foot}</span></div>
+            </div>
+            <div class="v76-kpi">
+                <div><div class="v76-kpi-label">최근 10개 중 중앙값 이하</div><div class="v76-kpi-value">{_home_below_median}개</div></div>
+                <div class="v76-kpi-foot"><span class="v76-badge {_median_badge_cls}">{_median_badge}</span><span>채널 중앙값 {_home_median_views:,.0f}회 기준</span></div>
+            </div>
+            <div class="v76-kpi">
+                <div><div class="v76-kpi-label">현재 특이 성장</div><div class="v76-kpi-value">{_special_count}개</div></div>
+                <div class="v76-kpi-foot"><span class="v76-badge {_special_badge_cls}">{_special_badge}</span><span>급상승·재상승 감지 기준</span></div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
     # -----------------------------
     # 2) 팩트 기반 인사이트
@@ -2310,104 +2440,152 @@ if page == "🏠 홈":
         })
 
     if _insights:
-        _icols = st.columns(min(3, len(_insights)))
-        for _idx, _item in enumerate(_insights[:3]):
-            with _icols[_idx]:
-                st.markdown(
-                    f"""
-                    <div class="ss-mini-card">
-                        <div class="ss-mini-label">{_item['title']}</div>
-                        <div class="ss-mini-title">{_item['value']}</div>
-                        <div class="ss-mini-meta">{_item['desc']}</div>
+        _insight_cards = []
+        for _item in _insights[:3]:
+            _title = _item["title"]
+            _value = _item["value"]
+            _desc = _item["desc"]
+            if _title == "최근 7일 조회수 변화":
+                if _home_views_change is not None and _home_views_change < 0:
+                    _badge_cls, _badge_text = "v76-negative", "하락"
+                elif _home_views_change is not None and _home_views_change > 0:
+                    _badge_cls, _badge_text = "v76-positive", "상승"
+                else:
+                    _badge_cls, _badge_text = "v76-neutral", "유지"
+            elif _title == "최근 영상 분포":
+                if _home_recent10 and (_home_below_median / len(_home_recent10)) >= 0.7:
+                    _badge_cls, _badge_text = "v76-warning", "확인 필요"
+                else:
+                    _badge_cls, _badge_text = "v76-neutral", "분포"
+            else:
+                _badge_cls = "v76-warning" if "_best_band" in locals() and _best_band["count"] < 3 else "v76-info"
+                _badge_text = f"표본 {_best_band['count']}개" if "_best_band" in locals() else "실제 데이터"
+
+            _insight_cards.append(
+                f"""
+                <div class="v76-insight">
+                    <div class="v76-insight-top">
+                        <div class="v76-insight-label">{_title}</div>
+                        <span class="v76-badge {_badge_cls}">{_badge_text}</span>
                     </div>
-                    """,
-                    unsafe_allow_html=True,
-                )
+                    <div class="v76-insight-value">{_value}</div>
+                    <div class="v76-insight-desc">{_desc}</div>
+                </div>
+                """
+            )
+        st.markdown('<div class="v76-insight-grid">' + "".join(_insight_cards) + '</div>', unsafe_allow_html=True)
 
     # -----------------------------
     # 3) 지금 볼 영상
     # -----------------------------
     st.markdown("### 지금 볼 영상")
+    st.caption("현재 성장 흐름에서 먼저 확인할 가치가 높은 최근 영상입니다.")
 
     if _home_watch:
-        _vcols = st.columns(len(_home_watch))
-
-        for _idx, _item in enumerate(_home_watch):
+        _video_cards = []
+        for _item in _home_watch:
             _v = _item["video"]
             _state = _item["state"]
             _event = _item["event"]
+            _status_label = _event.get("label") or _state.get("state") or "⏳ 데이터 축적 중"
+            if _event.get("label") in ("🚀 급상승", "🔥 재상승") or _state.get("state") == "↗ 상승":
+                _status_cls = "v76-positive"
+            elif _state.get("state") == "↘ 하락":
+                _status_cls = "v76-negative"
+            elif "축적" in str(_status_label) or "대기" in str(_status_label):
+                _status_cls = "v76-info"
+            else:
+                _status_cls = "v76-neutral"
 
-            with _vcols[_idx]:
-                if _v.get("thumbnail"):
-                    st.image(
-                        _v["thumbnail"],
-                        use_container_width=True,
-                    )
+            _confidence = _state.get("confidence", "낮음")
+            _confidence_cls = "v76-positive" if _confidence == "높음" else "v76-info" if _confidence == "보통" else "v76-warning"
+            _gain = _state.get("recent_gain")
+            _gain_text = f"최근 +{int(_gain):,}회" if _gain is not None and int(_gain) >= 0 else "최근 증가 계산 중"
+            _title = str(_v.get("title", "제목 없음")).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+            _thumb = str(_v.get("thumbnail") or "")
+            _thumb_html = f'<img class="v76-video-thumb" src="{_thumb}" alt="">' if _thumb else '<div class="v76-video-thumb"></div>'
 
-                _status_label = (
-                    _event.get("label")
-                    or _state.get("state")
-                    or "⏳ 데이터 축적 중"
-                )
-
-                st.markdown(
-                    f"**{_v.get('title', '제목 없음')}**"
-                )
-                st.caption(
-                    f"{_item['published'].strftime('%m.%d %H:%M')} · "
-                    f"{int(_v.get('views', 0) or 0):,}회"
-                )
-                st.caption(
-                    f"{_status_label} · 신뢰도 {_state.get('confidence', '낮음')}"
-                )
+            _video_cards.append(
+                f"""
+                <div class="v76-video-card">
+                    {_thumb_html}
+                    <div class="v76-video-body">
+                        <div class="v76-video-badges">
+                            <span class="v76-badge {_status_cls}">{_status_label}</span>
+                            <span class="v76-badge {_confidence_cls}">신뢰도 {_confidence}</span>
+                        </div>
+                        <div class="v76-video-title">{_title}</div>
+                        <div class="v76-video-meta"><span>{_item['published'].strftime('%m.%d %H:%M')}</span><span>{int(_v.get('views', 0) or 0):,}회</span></div>
+                        <div class="v76-video-meta"><span>현재 비교구간</span><span class="v76-video-gain">{_gain_text}</span></div>
+                    </div>
+                </div>
+                """
+            )
+        st.markdown('<div class="v76-video-grid">' + "".join(_video_cards) + '</div>', unsafe_allow_html=True)
     else:
-        st.info("아직 확인할 최근 영상이 없습니다.")
+        st.markdown(
+            """
+            <div class="v76-empty">
+                <div class="v76-empty-title">최근 영상 데이터를 모으는 중입니다.</div>
+                <div class="v76-empty-desc">스냅샷이 쌓이면 상승·하락·급상승 여부를 기준으로 먼저 볼 영상을 자동 정렬합니다.</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
     # -----------------------------
     # 4) 데이터 신뢰 상태
     # -----------------------------
-    st.markdown("### 데이터 상태")
+    st.markdown("### 데이터 신뢰 상태")
 
-    _d1, _d2, _d3 = st.columns(3)
-
-    _d1.metric(
-        "YouTube 연결",
-        "정상",
-        "읽기 전용",
-    )
+    _latest_snap_text = "확인 중"
+    _snapshot_badge_cls, _snapshot_badge = "v76-warning", "확인 필요"
+    _snapshot_desc = "스냅샷 상태를 확인하지 못했습니다."
 
     if _home_snapshot_fetch.get("ok"):
         _snap_rows = _home_snapshot_fetch.get("rows", [])
-        _d2.metric(
-            "스냅샷",
-            "정상",
-            f"최근 조회 {_home_snapshot_fetch.get('status', 'OK')}",
-        )
-        if _snap_rows:
-            _latest_snap = max(
-                _parse_utc(r.get("captured_at"))
-                for r in _snap_rows
-                if r.get("captured_at")
-            )
-            _d3.metric(
-                "마지막 스냅샷",
-                _latest_snap.astimezone(KST).strftime("%m.%d %H:%M"),
-                "Shorts Scope 자체 수집",
-            )
+        _valid_snap_times = [
+            _parse_utc(r.get("captured_at"))
+            for r in _snap_rows
+            if r.get("captured_at") and _parse_utc(r.get("captured_at"))
+        ]
+        if _valid_snap_times:
+            _latest_snap = max(_valid_snap_times)
+            _latest_snap_text = _latest_snap.astimezone(KST).strftime("%m.%d %H:%M")
+            _snap_age_min = (datetime.now(timezone.utc) - _latest_snap).total_seconds() / 60
+            if _snap_age_min <= 45:
+                _snapshot_badge_cls, _snapshot_badge = "v76-positive", "정상"
+            elif _snap_age_min <= 90:
+                _snapshot_badge_cls, _snapshot_badge = "v76-warning", "지연"
+            else:
+                _snapshot_badge_cls, _snapshot_badge = "v76-negative", "확인 필요"
+            _snapshot_desc = f"마지막 자체 수집 {_latest_snap_text} · 약 {_snap_age_min:.0f}분 전"
         else:
-            _d3.metric(
-                "마지막 스냅샷",
-                "데이터 부족",
-            )
-    else:
-        _d2.metric(
-            "스냅샷",
-            "⚠️ 확인 필요",
-        )
-        _d3.metric(
-            "마지막 스냅샷",
-            "데이터 부족",
-        )
+            _snapshot_badge_cls, _snapshot_badge = "v76-info", "축적 중"
+            _snapshot_desc = "최근 스냅샷 행이 아직 없습니다."
+
+    st.markdown(
+        f"""
+        <div class="v76-insight-grid">
+            <div class="v76-insight">
+                <div class="v76-insight-top"><div class="v76-insight-label">YouTube Analytics</div><span class="v76-badge v76-positive">실측</span></div>
+                <div class="v76-insight-value">연결 정상</div>
+                <div class="v76-insight-desc">읽기 전용 · 확정 데이터 우선</div>
+            </div>
+            <div class="v76-insight">
+                <div class="v76-insight-top"><div class="v76-insight-label">Shorts Scope 스냅샷</div><span class="v76-badge {_snapshot_badge_cls}">{_snapshot_badge}</span></div>
+                <div class="v76-insight-value">{_latest_snap_text}</div>
+                <div class="v76-insight-desc">{_snapshot_desc}</div>
+            </div>
+            <div class="v76-insight">
+                <div class="v76-insight-top"><div class="v76-insight-label">최근 Analytics</div><span class="v76-badge v76-info">집계 지연 가능</span></div>
+                <div class="v76-insight-value">확정값 우선</div>
+                <div class="v76-insight-desc">미확정 최근 날짜는 스냅샷 임시값으로 구분해 표시합니다.</div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
     st.divider()
 
@@ -3841,7 +4019,7 @@ if page == "📊 채널 패턴":
             st.caption("⏳ 최근 영상의 Analytics가 아직 충분히 집계되지 않았습니다.")
 
         st.divider()
-        st.markdown("### 📅 요일별 성과")
+        st.markdown("### 요일별 성과")
         st.caption(
             "현재 앱 시간대(KST)의 업로드 요일 기준입니다. "
             "표본이 1개뿐인 요일은 패턴으로 단정하지 않습니다."
@@ -3884,7 +4062,7 @@ if page == "📊 채널 패턴":
                 st.caption("⏳ 요일별 비교를 하기에는 아직 표본이 부족합니다.")
 
         st.divider()
-        st.markdown("### 🕒 업로드 시간대별 성과")
+        st.markdown("### 업로드 시간대별 성과")
         st.caption(
             "현재 앱 시간대(KST) 기준입니다. "
             "업로드 수가 적은 시간대는 '표본 부족'으로 구분합니다."
@@ -3921,6 +4099,43 @@ if page == "📊 채널 패턴":
 
         if _band_rows:
             _band_df = pd.DataFrame(_band_rows)
+            _pattern_cards = []
+
+            _weekday_compare = [row for row in _weekday_rows if row["영상 수"] >= 2]
+            if _weekday_compare:
+                _best_weekday = max(_weekday_compare, key=lambda row: row["평균 조회수"])
+                _weekday_conf = "낮음" if _best_weekday["영상 수"] < 3 else "보통" if _best_weekday["영상 수"] < 6 else "높음"
+                _weekday_cls = "v76-warning" if _weekday_conf == "낮음" else "v76-info" if _weekday_conf == "보통" else "v76-positive"
+                _pattern_cards.append(
+                    f"""
+                    <div class="v76-insight">
+                        <div class="v76-insight-top"><div class="v76-insight-label">요일 관찰</div><span class="v76-badge {_weekday_cls}">신뢰도 {_weekday_conf}</span></div>
+                        <div class="v76-insight-value">{_best_weekday['요일']}</div>
+                        <div class="v76-insight-desc">현재 표본 중 평균 조회수 {_best_weekday['평균 조회수']:,}회로 가장 높음 · 표본 {_best_weekday['영상 수']}개</div>
+                    </div>
+                    """
+                )
+
+            _band_compare = [row for row in _band_rows if row["영상 수"] >= 2]
+            if _band_compare:
+                _best_band_row = max(_band_compare, key=lambda row: row["평균 조회수"])
+                _band_conf = "낮음" if _best_band_row["영상 수"] < 3 else "보통" if _best_band_row["영상 수"] < 6 else "높음"
+                _band_cls = "v76-warning" if _band_conf == "낮음" else "v76-info" if _band_conf == "보통" else "v76-positive"
+                _pattern_cards.append(
+                    f"""
+                    <div class="v76-insight">
+                        <div class="v76-insight-top"><div class="v76-insight-label">시간대 관찰</div><span class="v76-badge {_band_cls}">신뢰도 {_band_conf}</span></div>
+                        <div class="v76-insight-value">{_best_band_row['시간대']}</div>
+                        <div class="v76-insight-desc">현재 표본 중 평균 조회수 {_best_band_row['평균 조회수']:,}회로 가장 높음 · 표본 {_best_band_row['영상 수']}개</div>
+                    </div>
+                    """
+                )
+
+            if _pattern_cards:
+                st.markdown("#### 현재 데이터에서 보이는 패턴")
+                st.markdown('<div class="v76-insight-grid">' + "".join(_pattern_cards) + '</div>', unsafe_allow_html=True)
+                st.caption("※ 현재 표본에서 관찰된 차이이며 업로드 시간이나 요일이 성과의 원인이라고 단정하지 않습니다.")
+
             st.dataframe(_band_df, hide_index=True, use_container_width=True)
             _band_chart = _band_df[_band_df["영상 수"] >= 2][["시간대", "평균 조회수"]]
             if not _band_chart.empty:
@@ -4570,7 +4785,7 @@ if page == "📋 리포트":
         reverse=True,
     )
 
-    st.markdown("### 🎬 최근 7일 업로드 성과")
+    st.markdown("### 최근 7일 업로드 성과")
     if _recent_uploaded:
         _recent_views = [
             int(v.get("views", 0) or 0)
@@ -4589,21 +4804,38 @@ if page == "📋 리포트":
             f"{max(_recent_views):,}회",
         )
 
-        _recent_table = []
-        for _idx, (_dt, _v) in enumerate(_recent_uploaded, start=1):
-            _recent_table.append({
-                "순위": _idx,
-                "업로드": _dt.strftime("%m.%d"),
-                "제목": _v.get("title", ""),
-                "조회수": int(_v.get("views", 0) or 0),
-                "좋아요": int(_v.get("likes", 0) or 0),
-                "댓글": int(_v.get("comments", 0) or 0),
-            })
-        st.dataframe(
-            pd.DataFrame(_recent_table),
-            hide_index=True,
-            use_container_width=True,
-        )
+        _top3_cards = []
+        for _idx, (_dt, _v) in enumerate(_recent_uploaded[:3], start=1):
+            _vv = int(_v.get("views", 0) or 0)
+            _vs_median = (_vv / _recent_median) if _recent_median > 0 else None
+            _ratio_text = f"중앙값 대비 ×{_vs_median:.1f}" if _vs_median is not None else "중앙값 비교 불가"
+            _title = str(_v.get("title", "제목 없음")).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+            _top3_cards.append(
+                f"""
+                <div class="v76-rank-card">
+                    <div class="v76-rank-no">TOP {_idx}</div>
+                    <div class="v76-rank-title">{_title}</div>
+                    <div class="v76-rank-value">{_vv:,}회</div>
+                    <div class="v76-rank-meta">{_ratio_text} · {_dt.strftime('%m.%d')}</div>
+                </div>
+                """
+            )
+
+        st.markdown("#### 이번 주 상위 영상")
+        st.markdown('<div class="v76-rank-grid">' + "".join(_top3_cards) + '</div>', unsafe_allow_html=True)
+
+        with st.expander("전체 업로드 성과 표 보기", expanded=False):
+            _recent_table = []
+            for _idx, (_dt, _v) in enumerate(_recent_uploaded, start=1):
+                _recent_table.append({
+                    "순위": _idx,
+                    "업로드": _dt.strftime("%m.%d"),
+                    "제목": _v.get("title", ""),
+                    "조회수": int(_v.get("views", 0) or 0),
+                    "좋아요": int(_v.get("likes", 0) or 0),
+                    "댓글": int(_v.get("comments", 0) or 0),
+                })
+            st.dataframe(pd.DataFrame(_recent_table), hide_index=True, use_container_width=True)
     else:
         st.caption("최근 7일 업로드 영상이 없습니다.")
 
@@ -4714,7 +4946,7 @@ if page == "📋 리포트":
     # =====================================================
     # V7 스냅샷 데이터 상태
     # =====================================================
-    st.markdown("### 🧱 스냅샷 데이터 상태")
+    st.markdown("### 스냅샷 데이터 상태")
     st.caption(
         "자체 데이터 품질을 확인합니다. 최근 수집이 끊기면 성장 분석의 신뢰도가 떨어질 수 있습니다."
     )
