@@ -1533,6 +1533,114 @@ st.markdown(
 )
 
 
+
+# =========================================================
+# V7.8 — UI/UX Stabilization
+# 긴 분석 화면의 밀도와 시각적 우선순위를 정리합니다.
+# =========================================================
+st.markdown(
+    """
+    <style>
+    /* 일반 콘텐츠 폭과 세로 밀도 */
+    .block-container {
+        max-width: 1180px !important;
+        padding-top: 1.05rem !important;
+    }
+
+    h2 {
+        margin-top: 1.15rem !important;
+        margin-bottom: .45rem !important;
+    }
+    h3 {
+        margin-top: 1rem !important;
+        margin-bottom: .4rem !important;
+    }
+
+    /* 설명 문장은 조금 더 읽히게 */
+    [data-testid="stCaptionContainer"] p {
+        color: #7a8495 !important;
+        font-size: .82rem !important;
+        line-height: 1.45 !important;
+    }
+
+    /* 폼을 덜 거대하게 */
+    [data-testid="stForm"] {
+        padding: .68rem .75rem .72rem !important;
+        margin-bottom: .45rem !important;
+        border-radius: 13px !important;
+    }
+
+    /* 입력 높이 정리 */
+    [data-baseweb="select"] > div,
+    [data-baseweb="input"] > div {
+        min-height: 40px !important;
+    }
+
+    /* 메트릭 카드 높이 과다 방지 */
+    [data-testid="stMetric"] {
+        min-height: 96px !important;
+        padding: .8rem .9rem !important;
+    }
+
+    /* expander를 '상세 정보' 느낌으로 */
+    [data-testid="stExpander"] {
+        margin-bottom: .55rem !important;
+        border-color: #e4e7ec !important;
+        box-shadow: none !important;
+    }
+
+    /* 구분선 간격 축소 */
+    hr {
+        margin: 1.15rem 0 !important;
+    }
+
+    /* 사이드바 메뉴 원형 라디오 완전히 숨김 */
+    section[data-testid="stSidebar"] div[role="radiogroup"] label > div:first-child {
+        display: none !important;
+    }
+    section[data-testid="stSidebar"] div[role="radiogroup"] label {
+        display: block !important;
+        padding: .5rem .68rem !important;
+    }
+
+    /* 현재 작업 흐름 안내 */
+    .v78-flow {
+        display:flex;
+        flex-wrap:wrap;
+        gap:.4rem;
+        margin:.15rem 0 .9rem;
+    }
+    .v78-flow span {
+        display:inline-flex;
+        align-items:center;
+        border:1px solid #e4e7ec;
+        background:#fff;
+        color:#667085;
+        border-radius:999px;
+        padding:.28rem .52rem;
+        font-size:.72rem;
+        font-weight:700;
+    }
+    .v78-flow span strong {
+        color:#ff4d5a;
+        margin-right:.2rem;
+    }
+
+    @media(max-width:768px){
+        .block-container {
+            padding-left:.7rem !important;
+            padding-right:.7rem !important;
+        }
+        [data-testid="stMetric"] {
+            min-height:88px !important;
+        }
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+
 # =========================================================
 # 2. OAuth 설정
 # =========================================================
@@ -3978,30 +4086,32 @@ if page == "📊 채널 패턴":
         _range_options = ["최근 10개", "최근 20개", "최근 50개", "최근 100개", "전체", "직접 입력"]
 
         with st.form("v77_pattern_range_form"):
-            _range_mode_input = st.selectbox(
-                "분석할 최근 영상 범위",
-                options=_range_options,
-                index=_range_options.index(st.session_state.v77_pattern_range_mode)
-                if st.session_state.v77_pattern_range_mode in _range_options
-                else 1,
-                key="v77_pattern_range_mode_input",
-            )
-
-            _custom_n_input = st.number_input(
-                "직접 입력할 영상 수",
-                min_value=1,
-                max_value=max(_max_recent, 1),
-                value=min(
-                    int(st.session_state.v77_pattern_custom_n or 1),
-                    max(_max_recent, 1),
-                ),
-                step=10,
-                disabled=_range_mode_input != "직접 입력",
-                key="v77_pattern_custom_n_input",
-            )
+            _pr1, _pr2 = st.columns([1.4, 1])
+            with _pr1:
+                _range_mode_input = st.selectbox(
+                    "분석할 최근 영상 범위",
+                    options=_range_options,
+                    index=_range_options.index(st.session_state.v77_pattern_range_mode)
+                    if st.session_state.v77_pattern_range_mode in _range_options
+                    else 1,
+                    key="v77_pattern_range_mode_input",
+                )
+            with _pr2:
+                _custom_n_input = st.number_input(
+                    "직접 입력",
+                    min_value=1,
+                    max_value=max(_max_recent, 1),
+                    value=min(
+                        int(st.session_state.v77_pattern_custom_n or 1),
+                        max(_max_recent, 1),
+                    ),
+                    step=10,
+                    disabled=_range_mode_input != "직접 입력",
+                    key="v77_pattern_custom_n_input",
+                )
 
             _apply_recent_n = st.form_submit_button(
-                "적용",
+                "범위 적용",
                 use_container_width=True,
             )
 
@@ -4197,7 +4307,7 @@ if page == "📊 채널 패턴":
                 st.caption("⏳ 시간대별 비교를 하기에는 아직 표본이 부족합니다.")
 
         st.divider()
-        st.markdown("### 🏷️ 소재 · 주제별 패턴")
+        st.markdown("### 소재 · 주제별 패턴")
         st.info(
             "제목만 보고 소재를 AI처럼 추정하지 않습니다. "
             "V6.7 운영에서 사용자가 영상 태그/주제를 기록할 수 있게 만든 뒤, "
@@ -4223,14 +4333,14 @@ if page == "🧪 운영":
         st.warning("Supabase 운영 데이터 저장 설정이 연결되지 않았습니다.")
     else:
         _tab_goal, _tab_video, _tab_experiment = st.tabs(
-            ["🎯 목표", "📝 영상 기록", "🧪 실험 기록"]
+            ["목표", "영상 기록", "실험 기록"]
         )
 
         # =====================================================
         # 목표
         # =====================================================
         with _tab_goal:
-            st.subheader("🎯 채널 목표")
+            st.subheader("채널 목표")
             st.caption(
                 "목표는 성과 판정 기준이 아니라 운영 계획을 기록하는 용도입니다."
             )
@@ -4301,7 +4411,7 @@ if page == "🧪 운영":
         # 영상 기록
         # =====================================================
         with _tab_video:
-            st.subheader("📝 영상별 기록")
+            st.subheader("영상별 기록")
             st.caption(
                 "여기 내용은 사용자가 직접 기록합니다. "
                 "Shorts Scope가 근거 없이 원인이나 개선점을 자동 생성하지 않습니다."
@@ -4548,7 +4658,7 @@ if page == "🧪 운영":
         # 실험 기록
         # =====================================================
         with _tab_experiment:
-            st.subheader("🧪 실험 기록")
+            st.subheader("실험 기록")
             st.caption(
                 "무엇을 바꿨는지 먼저 기록하고, 결과는 나중에 실제 데이터가 나온 뒤 작성합니다."
             )
@@ -5004,15 +5114,15 @@ if page == "📋 리포트":
         st.session_state.v77_report_custom_end = _report_today - timedelta(days=1)
 
     with st.form("v77_report_period_form"):
-        _report_mode_input = st.selectbox(
-            "리포트 기간",
-            ["최근 7일", "최근 14일", "최근 30일", "최근 90일", "직접 선택"],
-            index=["최근 7일", "최근 14일", "최근 30일", "최근 90일", "직접 선택"].index(
-                st.session_state.v77_report_mode
-            ),
-        )
-
-        _rp1, _rp2 = st.columns(2)
+        _rp0, _rp1, _rp2 = st.columns([1.2, 1, 1])
+        with _rp0:
+            _report_mode_input = st.selectbox(
+                "리포트 기간",
+                ["최근 7일", "최근 14일", "최근 30일", "최근 90일", "직접 선택"],
+                index=["최근 7일", "최근 14일", "최근 30일", "최근 90일", "직접 선택"].index(
+                    st.session_state.v77_report_mode
+                ),
+            )
         with _rp1:
             _report_custom_start_input = st.date_input(
                 "시작일",
@@ -5028,7 +5138,7 @@ if page == "📋 리포트":
             )
 
         _report_apply = st.form_submit_button(
-            "리포트 조회",
+            "기간 적용",
             use_container_width=True,
         )
 
@@ -5157,11 +5267,12 @@ if page == "📋 리포트":
                 f"이전 {_report_span_days}일": _week_prev["net_subscribers"],
             },
         ])
-        st.dataframe(_week_rows, hide_index=True, use_container_width=True)
+        with st.expander("현재 기간 ↔ 이전 기간 상세 비교", expanded=False):
+            st.dataframe(_week_rows, hide_index=True, use_container_width=True)
 
         if _prev_uploads == 0:
             st.caption(
-                "※ 이전 7일 업로드가 0개라 조회수 변화만으로 영상 성과 개선을 단정하지 않습니다."
+                "※ 이전 비교 기간의 업로드가 0개라 조회수 변화만으로 영상 성과 개선을 단정하지 않습니다."
             )
     else:
         st.info("⏳ 선택한 기간의 리포트 데이터를 아직 불러오지 못했습니다.")
@@ -5501,6 +5612,17 @@ if page == "📋 리포트":
 
 
 if page == "📈 성장 분석":
+    st.markdown(
+        """
+        <div class="v78-flow">
+            <span><strong>1</strong> 기준 시점 확인</span>
+            <span><strong>2</strong> 채널 추세 확인</span>
+            <span><strong>3</strong> 영상 검색</span>
+            <span><strong>4</strong> 상세 분석</span>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
     # =========================================================
     # 20. 자동 성과 리포트 V6
     # =========================================================
@@ -5821,7 +5943,7 @@ if page == "📈 성장 분석":
     # -----------------------------
     # 채널 추세
     # -----------------------------
-    st.markdown("### 📈 채널 추세")
+    st.markdown("### 채널 추세")
 
     trend_last_day = today - timedelta(days=1)
 
@@ -5845,6 +5967,7 @@ if page == "📈 성장 분석":
                 "직접 선택 시작일",
                 value=st.session_state.v72_trend_applied_start,
                 max_value=trend_last_day,
+                disabled=trend_option_input != "직접 선택",
                 key="v72_trend_start_input",
             )
         with _tc2:
@@ -5852,6 +5975,7 @@ if page == "📈 성장 분석":
                 "직접 선택 종료일",
                 value=st.session_state.v72_trend_applied_end,
                 max_value=trend_last_day,
+                disabled=trend_option_input != "직접 선택",
                 key="v72_trend_end_input",
             )
         _trend_submit = st.form_submit_button(
@@ -6049,18 +6173,18 @@ if page == "📈 성장 분석":
         base_like = sum(v["like_rate"] for v in report_videos) / len(report_videos)
         base_sub = sum(v["sub_conversion_rate"] for v in report_videos) / len(report_videos)
 
-        st.markdown("### 📊 내 채널 기준선")
-        b1,b2,b3=st.columns(3)
-        b1.metric("분석 대상 평균 조회수", f"{base_views:,.0f}회")
-        b2.metric("분석 대상 중앙 조회수", f"{median_views:,.0f}회")
-        b3.metric("평균 시청률", f"{base_ret:.1f}%")
+        with st.expander("내 채널 기준선 보기", expanded=False):
+            b1,b2,b3=st.columns(3)
+            b1.metric("분석 대상 평균 조회수", f"{base_views:,.0f}회")
+            b2.metric("분석 대상 중앙 조회수", f"{median_views:,.0f}회")
+            b3.metric("평균 시청률", f"{base_ret:.1f}%")
 
-        b4,b5=st.columns(2)
-        b4.metric("평균 좋아요율", f"{base_like:.2f}%")
-        b5.metric("평균 구독전환율", f"{base_sub:.3f}%")
-        st.caption("※ 위 기준선은 현재 분석 가능한 내 영상들의 비교값이며 YouTube 공식 기준이 아닙니다.")
+            b4,b5=st.columns(2)
+            b4.metric("평균 좋아요율", f"{base_like:.2f}%")
+            b5.metric("평균 구독전환율", f"{base_sub:.3f}%")
+            st.caption("※ 현재 분석 가능한 내 영상들의 비교값이며 YouTube 공식 기준이 아닙니다.")
 
-        st.markdown("### 🔬 영상별 성과 비교")
+        st.markdown("### 영상별 성과 비교")
         st.caption(
             "제목 검색 · 기간 · 성장상태 · 정렬로 영상을 찾고, 선택한 영상 1개만 상세 분석합니다."
         )
