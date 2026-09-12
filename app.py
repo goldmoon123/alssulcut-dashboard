@@ -6,6 +6,7 @@ from openpyxl.worksheet.table import Table, TableStyleInfo
 import calendar
 import re
 import time
+import requests
 
 import pandas as pd
 import streamlit as st
@@ -65,6 +66,285 @@ REDIRECT_URI = get_config(
     "GOOGLE_REDIRECT_URI",
     "http://localhost:8501",
 )
+
+# V6.5: 스냅샷 조회는 서버(Streamlit)에서만 수행합니다.
+# Secret Key는 절대 코드/GitHub에 넣지 않고 Streamlit Secrets 또는 환경변수로만 주입합니다.
+SUPABASE_URL = get_config("SUPABASE_URL")
+SUPABASE_SECRET_KEY = (
+    get_config("SUPABASE_SECRET_KEY")
+    or get_config("SUPABASE_SERVICE_ROLE_KEY")
+)
+
+
+def _connected_youtube_channel_id(youtube_client):
+    """현재 OAuth로 연결된 YouTube 채널 ID를 직접 확인합니다."""
+    response = youtube_client.channels().list(
+        part="id",
+        mine=True,
+        maxResults=1,
+    ).execute()
+    items = response.get("items", [])
+    if not items:
+        return None
+    return items[0].get("id")
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def _fetch_channel_snapshots(channel_id, since_iso):
+    """
+    현재 OAuth 채널의 최근 스냅샷을 Supabase REST API에서 읽습니다.
+    - 서버 전용 Secret Key 사용
+    - channel_id는 사용자가 입력하지 않고 YouTube OAuth에서 얻은 값만 사용
+    - 1000행 단위로 페이지 처리
+    """
+    if not SUPABASE_URL or not SUPABASE_SECRET_KEY:
+        return {
+            "ok": False,
+            "reason": "not_configured",
+            "rows": [],
+            "message": "Supabase 읽기 설정이 아직 연결되지 않았습니다.",
+        }
+
+    if not channel_id:
+        return {
+            "ok": False,
+            "reason": "channel_missing",
+            "rows": [],
+            "message": "현재 연결된 YouTube 채널 ID를 확인하지 못했습니다.",
+        }
+
+    url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/video_snapshots"
+    headers = {
+        "apikey": SUPABASE_SECRET_KEY,
+        "Accept": "application/json",
+    }
+    params = {
+        "select": "video_id,captured_at,view_count,like_count,comment_count",
+        "channel_id": f"eq.{channel_id}",
+        "captured_at": f"gte.{since_iso}",
+        "order": "captured_at.asc",
+    }
+
+    page_size = 1000
+    offset = 0
+    rows = []
+    max_rows = 30000
+
+    try:
+        while offset < max_rows:
+            page_headers = {
+                **headers,
+                "Range-Unit": "items",
+                "Range": f"{offset}-{offset + page_size - 1}",
+            }
+            response = requests.get(
+                url,
+                headers=page_headers,
+                params=params,
+                timeout=15,
+            )
+            if response.status_code not in (200, 206):
+                return {
+                    "ok": False,
+                    "reason": "http_error",
+                    "rows": [],
+                    "message": f"Supabase 스냅샷 조회 실패 (HTTP {response.status_code})",
+                }
+
+            page = response.json()
+            if not isinstance(page, list):
+                return {
+                    "ok": False,
+                    "reason": "invalid_response",
+                    "rows": [],
+                    "message": "Supabase 응답 형식을 확인하지 못했습니다.",
+                }
+
+            rows.extend(page)
+            if len(page) < page_size:
+                break
+            offset += page_size
+
+        return {
+            "ok": True,
+            "reason": None,
+            "rows": rows,
+            "message": None,
+            "truncated": len(rows) >= max_rows,
+        }
+    except Exception:
+        return {
+            "ok": False,
+            "reason": "request_error",
+            "rows": [],
+            "message": "Supabase 스냅샷을 불러오는 중 연결 오류가 발생했습니다.",
+        }
+
+
+def _parse_utc(value):
+    if not value:
+        return None
+    try:
+        dt = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc)
+    except Exception:
+        return None
+
+
+def _group_snapshot_rows(rows, allowed_video_ids=None):
+    allowed = set(allowed_video_ids or [])
+    grouped = {}
+    for row in rows:
+        video_id = row.get("video_id")
+        if not video_id or (allowed and video_id not in allowed):
+            continue
+        captured_at = _parse_utc(row.get("captured_at"))
+        if not captured_at:
+            continue
+        try:
+            view_count = int(row.get("view_count") or 0)
+        except Exception:
+            continue
+        grouped.setdefault(video_id, []).append({
+            "captured_at": captured_at,
+            "view_count": view_count,
+        })
+
+    for video_id in grouped:
+        # 같은 시각 중복이 있으면 마지막 값만 사용
+        dedup = {}
+        for row in grouped[video_id]:
+            dedup[row["captured_at"]] = row
+        grouped[video_id] = sorted(dedup.values(), key=lambda x: x["captured_at"])
+    return grouped
+
+
+def _snapshot_window_hours(video, now_utc):
+    """영상 나이에 따라 비교 구간을 자동 선택합니다."""
+    published = _parse_utc(video.get("published_raw"))
+    if not published:
+        return 3
+    age_hours = max((now_utc - published).total_seconds() / 3600, 0)
+    if age_hours < 6:
+        return 1
+    if age_hours < 48:
+        return 3
+    if age_hours < 24 * 7:
+        return 6
+    return 24
+
+
+def _nearest_snapshot_at_or_before(rows, target, max_gap_hours):
+    candidate = None
+    for row in rows:
+        if row["captured_at"] <= target:
+            candidate = row
+        else:
+            break
+    if candidate is None:
+        return None
+    gap_hours = (target - candidate["captured_at"]).total_seconds() / 3600
+    if gap_hours > max_gap_hours:
+        return None
+    return candidate
+
+
+def _snapshot_growth_state(video, snapshot_rows, now_utc=None):
+    """
+    V6.5-1 기본 성장상태.
+    '현재 속도 vs 직전 속도'만 판정하며 급상승/재상승은 별도 단계에서 처리합니다.
+    """
+    now_utc = now_utc or datetime.now(timezone.utc)
+    rows = snapshot_rows or []
+    window_hours = _snapshot_window_hours(video, now_utc)
+
+    base = {
+        "state": "⏳ 데이터 축적 중",
+        "window_hours": window_hours,
+        "recent_gain": None,
+        "previous_gain": None,
+        "recent_velocity": None,
+        "previous_velocity": None,
+        "ratio": None,
+        "confidence": "낮음",
+        "latest_at": None,
+        "note": None,
+    }
+
+    if len(rows) < 3:
+        return base
+
+    latest = rows[-1]
+    base["latest_at"] = latest["captured_at"]
+    freshness_hours = (now_utc - latest["captured_at"]).total_seconds() / 3600
+    if freshness_hours > 8:
+        base["state"] = "⏳ 스냅샷 갱신 대기"
+        base["note"] = f"마지막 스냅샷이 약 {freshness_hours:.1f}시간 전입니다."
+        return base
+
+    recent_target = latest["captured_at"] - timedelta(hours=window_hours)
+    previous_target = latest["captured_at"] - timedelta(hours=window_hours * 2)
+    max_gap_hours = min(max(window_hours * 0.5, 0.75), 8)
+
+    recent_start = _nearest_snapshot_at_or_before(rows, recent_target, max_gap_hours)
+    previous_start = _nearest_snapshot_at_or_before(rows, previous_target, max_gap_hours)
+    if not recent_start or not previous_start:
+        return base
+
+    recent_hours_actual = (latest["captured_at"] - recent_start["captured_at"]).total_seconds() / 3600
+    previous_hours_actual = (recent_start["captured_at"] - previous_start["captured_at"]).total_seconds() / 3600
+    if recent_hours_actual <= 0 or previous_hours_actual <= 0:
+        return base
+
+    recent_gain = latest["view_count"] - recent_start["view_count"]
+    previous_gain = recent_start["view_count"] - previous_start["view_count"]
+    recent_velocity = recent_gain / recent_hours_actual
+    previous_velocity = previous_gain / previous_hours_actual
+
+    base.update({
+        "recent_gain": recent_gain,
+        "previous_gain": previous_gain,
+        "recent_velocity": recent_velocity,
+        "previous_velocity": previous_velocity,
+    })
+
+    # YouTube가 조회수를 사후 보정해 누적값이 감소하는 드문 경우는 일반 성장판정에서 분리합니다.
+    if recent_gain < 0 or previous_gain < 0:
+        base["state"] = "→ 유지"
+        base["note"] = "조회수 누적값 보정이 감지되어 속도 판정을 보류했습니다."
+        return base
+
+    current_views = max(int(latest["view_count"]), 0)
+    # 아주 작은 변화(예: 2→4)를 상승으로 과대평가하지 않기 위한 최소 활동량.
+    activity_floor = max(3, min(50, int(round(current_views * 0.0001))))
+    if recent_gain + previous_gain <= activity_floor:
+        base["state"] = "💤 정체"
+    elif previous_velocity <= 0:
+        base["state"] = "↗ 상승" if recent_velocity > 0 else "💤 정체"
+    else:
+        ratio = recent_velocity / previous_velocity
+        base["ratio"] = ratio
+        if ratio >= 1.35:
+            base["state"] = "↗ 상승"
+        elif ratio <= 0.65:
+            base["state"] = "↘ 하락"
+        else:
+            base["state"] = "→ 유지"
+
+    # 판정 신뢰도: 시간 경계와 가까운 스냅샷을 확보했는지 + 최신성 기준
+    recent_gap = abs((recent_target - recent_start["captured_at"]).total_seconds()) / 3600
+    previous_gap = abs((previous_target - previous_start["captured_at"]).total_seconds()) / 3600
+    boundary_quality = max(recent_gap, previous_gap) / max(window_hours, 1)
+    if freshness_hours <= 1.5 and boundary_quality <= 0.25 and len(rows) >= 5:
+        base["confidence"] = "높음"
+    elif freshness_hours <= 8 and boundary_quality <= 0.5:
+        base["confidence"] = "보통"
+    else:
+        base["confidence"] = "낮음"
+
+    return base
 
 # HTTP 허용은 localhost 개발 때만 사용
 if REDIRECT_URI.startswith("http://localhost"):
@@ -806,7 +1086,7 @@ st.caption("필요한 화면을 골라서 확인합니다.")
 
 page = st.radio(
     "화면 선택",
-    ["🏠 홈", "📈 성장 분석", "📊 채널 패턴", "🧪 운영", "📋 리포트", "🔎 영상 찾기"],
+    ["🏠 홈", "📈 성장 분석", "🔎 영상 찾기"],
     horizontal=True,
     label_visibility="collapsed",
     key="main_page_v64",
@@ -815,9 +1095,6 @@ page = st.radio(
 _page_help = {
     "🏠 홈": "채널 핵심 상태와 공개 영상 성과 확인",
     "📈 성장 분석": "채널 기준선과 영상별 실제 성장 흐름 비교",
-    "📊 채널 패턴": "최근 영상 묶음 · 요일/시간 · 소재별 패턴이 들어갈 자리",
-    "🧪 운영": "목표 · 태그 · 실험 기록 · 영상 메모리 카드가 들어갈 자리",
-    "📋 리포트": "주간 리포트 · 이상 변화 · 개인 최고기록이 들어갈 자리",
     "🔎 영상 찾기": "검색 · 전체 데이터 · TOP 순위 · Excel · 예약 영상",
 }
 
@@ -2099,6 +2376,41 @@ if page == "📈 성장 분석":
         f"마지막 조회: {datetime.now(KST).strftime('%Y-%m-%d %H:%M KST')}"
     )
 
+    # V6.5-1: 현재 성장상태용 Supabase 스냅샷
+    _snapshot_fetch = {"ok": False, "rows": [], "reason": "not_started", "message": None}
+    _snapshot_by_video = {}
+    _snapshot_channel_id = None
+    try:
+        _snapshot_channel_id = _connected_youtube_channel_id(youtube)
+        _snapshot_since = (
+            datetime.now(timezone.utc) - timedelta(days=4)
+        ).replace(minute=0, second=0, microsecond=0).isoformat()
+        _snapshot_fetch = _fetch_channel_snapshots(_snapshot_channel_id, _snapshot_since)
+        if _snapshot_fetch.get("ok"):
+            _snapshot_by_video = _group_snapshot_rows(
+                _snapshot_fetch.get("rows", []),
+                [v.get("video_id") for v in report_videos],
+            )
+    except Exception:
+        _snapshot_fetch = {
+            "ok": False,
+            "rows": [],
+            "reason": "unexpected_error",
+            "message": "스냅샷 성장 데이터를 준비하지 못했습니다.",
+        }
+
+    if _snapshot_fetch.get("ok"):
+        _snapshot_video_count = len(_snapshot_by_video)
+        st.caption(
+            f"⚡ 스냅샷 성장 데이터 연결 · 현재 분석 가능한 영상 {_snapshot_video_count}개"
+        )
+        if _snapshot_fetch.get("truncated"):
+            st.warning("스냅샷 조회량이 많아 일부 최신 데이터만 사용 중입니다.")
+    elif _snapshot_fetch.get("reason") == "not_configured":
+        st.caption("⏳ 스냅샷 성장상태 연결 준비 중 · 기존 Analytics 분석은 그대로 사용할 수 있습니다.")
+    else:
+        st.caption("⚠️ 스냅샷 성장상태를 불러오지 못했습니다. 기존 Analytics 분석은 그대로 사용할 수 있습니다.")
+
     # -----------------------------
     # 채널 추세
     # -----------------------------
@@ -2381,7 +2693,7 @@ if page == "📈 성장 분석":
                 "sample": len(peers),
             }
 
-        def _growth_state(video):
+        def _daily_analytics_trend(video):
             series = growth_cache.get(video.get("video_id"), [])
             if len(series) < 4:
                 return "⏳ 데이터 축적 중"
@@ -2455,7 +2767,13 @@ if page == "📈 성장 분석":
                     pass
 
             _comp = _comparison_for(v)
-            _state = _growth_state(v)
+            _snapshot_state = _snapshot_growth_state(
+                v,
+                _snapshot_by_video.get(v.get("video_id"), []),
+                datetime.now(timezone.utc),
+            ) if _snapshot_fetch.get("ok") else None
+            _daily_trend = _daily_analytics_trend(v)
+            _state = _snapshot_state["state"] if _snapshot_state else f"📅 {_daily_trend}"
 
             if _comp and _comp["sample"] >= 5:
                 _same_age_text = (
@@ -2500,6 +2818,35 @@ if page == "📈 성장 분석":
                 st.caption(
                     "📌 기준선 비교 · " + (" · ".join(parts) if parts else "채널 기준선과 비슷한 수준")
                 )
+
+                st.markdown("**⚡ 현재 성장 상태 (스냅샷)**")
+                if _snapshot_state:
+                    st.write(f"**{_snapshot_state['state']}**")
+                    if _snapshot_state.get("recent_gain") is not None:
+                        _w = _snapshot_state["window_hours"]
+                        _ratio = _snapshot_state.get("ratio")
+                        _ratio_text = (
+                            "직전 구간 0회/h"
+                            if _ratio is None and (_snapshot_state.get("previous_velocity") or 0) <= 0
+                            else (f"속도 {_ratio:.2f}배" if _ratio is not None else "속도 비교 보류")
+                        )
+                        st.caption(
+                            f"최근 {_w}시간 +{_snapshot_state['recent_gain']:,}회 "
+                            f"({_snapshot_state['recent_velocity']:.1f}회/h) · "
+                            f"직전 {_w}시간 +{_snapshot_state['previous_gain']:,}회 "
+                            f"({_snapshot_state['previous_velocity']:.1f}회/h) · "
+                            f"{_ratio_text} · 신뢰도 {_snapshot_state['confidence']}"
+                        )
+                    else:
+                        st.caption("비교 가능한 시간대의 스냅샷이 더 쌓이면 자동으로 판정합니다.")
+                    if _snapshot_state.get("note"):
+                        st.caption(f"※ {_snapshot_state['note']}")
+                elif _snapshot_fetch.get("reason") == "not_configured":
+                    st.caption("⏳ Supabase 스냅샷 읽기 설정 후 최근 성장속도가 표시됩니다.")
+                    st.caption(f"현재 일별 Analytics 참고: {_daily_trend}")
+                else:
+                    st.caption("⚠️ 스냅샷 성장상태를 불러오지 못했습니다.")
+                    st.caption(f"현재 일별 Analytics 참고: {_daily_trend}")
 
                 st.markdown("**D+N 실제 성장 데이터**")
                 _series = growth_cache.get(v.get("video_id"), [])
@@ -2574,24 +2921,6 @@ if page == "📈 성장 분석":
                             )
     else:
         st.info("아직 비교 가능한 영상이 없습니다.")
-
-if page == "📊 채널 패턴":
-    st.header("📊 채널 패턴")
-    st.info("🚧 이 화면은 V6.6에서 채워집니다.")
-    st.write("여기에는 최근 10/20/50개 영상 성과, 업로드 요일·시간, 소재별 성과 분석이 들어갈 예정입니다.")
-    st.caption("지금은 자리만 만들어 둡니다. V6.4에서는 실제 분석 기능을 추가하지 않습니다.")
-
-if page == "🧪 운영":
-    st.header("🧪 운영")
-    st.info("🚧 이 화면은 V6.7에서 채워집니다.")
-    st.write("목표, 영상 태그, 실험 기록, 영상 메모리 카드가 들어갈 예정입니다.")
-    st.caption("지금은 AI 분석이나 대본 생성 없이 저장·정리 기능만 준비하는 방향입니다.")
-
-if page == "📋 리포트":
-    st.header("📋 리포트")
-    st.info("🚧 이 화면은 V6.8에서 채워집니다.")
-    st.write("주간 리포트, 이상 변화 감지, 개인 최고기록이 들어갈 예정입니다.")
-    st.caption("현재는 자리만 만들어 두고 기능 구현은 나중 단계에서 진행합니다.")
 
 if page == "🔎 영상 찾기":
     # =========================================================
