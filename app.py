@@ -246,6 +246,160 @@ def _supabase_table_delete(table_name, filters):
         }
 
 
+
+def _snapshot_point_near(rows, target_dt, tolerance_minutes=90, prefer_before=True):
+    """
+    기준 시점에 가장 가까운 스냅샷을 찾습니다.
+    - 기본은 target 이전 스냅샷 우선
+    - 허용 오차를 넘으면 None
+    """
+    if not rows:
+        return None
+
+    tolerance = timedelta(minutes=tolerance_minutes)
+
+    if prefer_before:
+        before = [r for r in rows if r["captured_at"] <= target_dt]
+        if before:
+            candidate = before[-1]
+            if (target_dt - candidate["captured_at"]) <= tolerance:
+                return candidate
+
+    candidate = min(
+        rows,
+        key=lambda r: abs((r["captured_at"] - target_dt).total_seconds()),
+    )
+    if abs(candidate["captured_at"] - target_dt) <= tolerance:
+        return candidate
+    return None
+
+
+def _snapshot_age_milestones(video, rows, now_utc=None):
+    """
+    V7 — 업로드 후 기준 시점별(1h/6h/12h/24h/48h/72h) 실제 스냅샷 조회수.
+    데이터가 없으면 0이 아니라 None으로 둡니다.
+    """
+    now_utc = now_utc or datetime.now(timezone.utc)
+    published = _parse_utc(video.get("published_raw"))
+    if not published or not rows:
+        return {}
+
+    milestones = [1, 6, 12, 24, 48, 72]
+    result = {}
+
+    for hour in milestones:
+        target = published + timedelta(hours=hour)
+
+        # 아직 해당 나이에 도달하지 않은 영상은 미도달
+        if now_utc < target:
+            result[hour] = {
+                "status": "not_reached",
+                "view_count": None,
+                "captured_at": None,
+                "delay_minutes": None,
+            }
+            continue
+
+        point = _snapshot_point_near(
+            rows,
+            target,
+            tolerance_minutes=90,
+            prefer_before=True,
+        )
+        if point is None:
+            result[hour] = {
+                "status": "missing",
+                "view_count": None,
+                "captured_at": None,
+                "delay_minutes": None,
+            }
+            continue
+
+        delay = abs((point["captured_at"] - target).total_seconds()) / 60
+        result[hour] = {
+            "status": "ok",
+            "view_count": int(point.get("view_count") or 0),
+            "captured_at": point["captured_at"],
+            "delay_minutes": round(delay, 1),
+        }
+
+    return result
+
+
+def _snapshot_interval_gain(video, rows, start_hour, end_hour, now_utc=None):
+    """
+    업로드 후 start_hour~end_hour 사이 증가량.
+    경계 스냅샷이 없으면 None.
+    """
+    now_utc = now_utc or datetime.now(timezone.utc)
+    published = _parse_utc(video.get("published_raw"))
+    if not published or not rows:
+        return None
+
+    start_target = published + timedelta(hours=start_hour)
+    end_target = published + timedelta(hours=end_hour)
+
+    if now_utc < end_target:
+        return None
+
+    start_point = _snapshot_point_near(rows, start_target, 90, True)
+    end_point = _snapshot_point_near(rows, end_target, 90, True)
+    if not start_point or not end_point:
+        return None
+
+    gain = int(end_point.get("view_count") or 0) - int(start_point.get("view_count") or 0)
+    if gain < 0:
+        return {
+            "gain": None,
+            "status": "counter_adjusted",
+            "start": start_point,
+            "end": end_point,
+        }
+
+    return {
+        "gain": gain,
+        "status": "ok",
+        "start": start_point,
+        "end": end_point,
+    }
+
+
+def _snapshot_milestone_table(video, rows, now_utc=None):
+    milestone_data = _snapshot_age_milestones(video, rows, now_utc)
+    rows_out = []
+
+    labels = {
+        1: "1시간",
+        6: "6시간",
+        12: "12시간",
+        24: "24시간",
+        48: "48시간",
+        72: "72시간",
+    }
+
+    for hour in [1, 6, 12, 24, 48, 72]:
+        item = milestone_data.get(hour, {})
+        status = item.get("status")
+
+        if status == "ok":
+            value = f"{int(item['view_count']):,}회"
+            note = f"기준시점 ±{item.get('delay_minutes', 0):.0f}분"
+        elif status == "not_reached":
+            value = "⏳ 미도달"
+            note = "아직 해당 업로드 나이에 도달하지 않음"
+        else:
+            value = "데이터 부족"
+            note = "기준시점 근처 스냅샷 없음"
+
+        rows_out.append({
+            "기준 시점": labels[hour],
+            "누적 조회수": value,
+            "상태": note,
+        })
+
+    return rows_out
+
+
 def _connected_youtube_channel_id(youtube_client):
     """현재 OAuth로 연결된 YouTube 채널 ID를 직접 확인합니다."""
     response = youtube_client.channels().list(
@@ -3701,6 +3855,81 @@ if page == "📋 리포트":
 
     st.divider()
 
+
+    # =====================================================
+    # V7 스냅샷 데이터 상태
+    # =====================================================
+    st.markdown("### 🧱 스냅샷 데이터 상태")
+    st.caption(
+        "자체 데이터 품질을 확인합니다. 최근 수집이 끊기면 성장 분석의 신뢰도가 떨어질 수 있습니다."
+    )
+
+    try:
+        _health_channel_id = _connected_youtube_channel_id(youtube)
+        _health_since = (
+            datetime.now(timezone.utc) - timedelta(hours=12)
+        ).isoformat()
+        _health_fetch = _fetch_channel_snapshots(
+            _health_channel_id,
+            _health_since,
+        )
+    except Exception:
+        _health_fetch = {
+            "ok": False,
+            "reason": "snapshot_error",
+            "rows": [],
+        }
+
+    if _health_fetch.get("ok"):
+        _health_rows = _health_fetch.get("rows", [])
+        _health_times = []
+        _health_video_ids = set()
+
+        for _row in _health_rows:
+            try:
+                _dt = _parse_utc(_row.get("captured_at"))
+                if _dt:
+                    _health_times.append(_dt)
+                if _row.get("video_id"):
+                    _health_video_ids.add(_row.get("video_id"))
+            except Exception:
+                pass
+
+        if _health_times:
+            _latest_snapshot = max(_health_times)
+            _age_minutes = (
+                datetime.now(timezone.utc) - _latest_snapshot
+            ).total_seconds() / 60
+
+            _hc1, _hc2, _hc3 = st.columns(3)
+            _hc1.metric(
+                "마지막 스냅샷",
+                _latest_snapshot.astimezone(KST).strftime("%m.%d %H:%M"),
+            )
+            _hc2.metric(
+                "최근 12시간 스냅샷 행",
+                f"{len(_health_rows):,}개",
+            )
+            _hc3.metric(
+                "최근 수집 영상",
+                f"{len(_health_video_ids)}개",
+            )
+
+            if _age_minutes <= 45:
+                st.success("✅ 스냅샷 자동수집 정상")
+            elif _age_minutes <= 90:
+                st.warning("⚠️ 최근 스냅샷이 평소보다 늦습니다.")
+            else:
+                st.error(
+                    "🚨 스냅샷 수집이 지연되고 있습니다. Edge Function / Cron 상태 확인이 필요합니다."
+                )
+        else:
+            st.warning("최근 12시간 스냅샷이 없습니다.")
+    else:
+        st.warning("스냅샷 상태를 확인하지 못했습니다.")
+
+    st.divider()
+
     # =====================================================
     # 개인 최고기록
     # =====================================================
@@ -3850,6 +4079,138 @@ if page == "📈 성장 분석":
         st.caption("⏳ 스냅샷 성장상태 연결 준비 중 · 기존 Analytics 분석은 그대로 사용할 수 있습니다.")
     else:
         st.caption("⚠️ 스냅샷 성장상태를 불러오지 못했습니다. 기존 Analytics 분석은 그대로 사용할 수 있습니다.")
+
+
+    # ---------------------------------------------------------
+    # V7 — 자체 스냅샷 기준 시점 데이터
+    # ---------------------------------------------------------
+    st.markdown("### ⏱️ V7 자체 스냅샷 기준 시점")
+    st.caption(
+        "업로드 후 1h / 6h / 12h / 24h / 48h / 72h 시점의 실제 스냅샷을 사용합니다. "
+        "기준 시점 근처 데이터가 없으면 0으로 채우지 않고 '데이터 부족'으로 표시합니다."
+    )
+
+    try:
+        _v7_channel_id = _connected_youtube_channel_id(youtube)
+        _v7_since = (
+            datetime.now(timezone.utc) - timedelta(days=10)
+        ).isoformat()
+        _v7_fetch = _fetch_channel_snapshots(
+            _v7_channel_id,
+            _v7_since,
+        )
+    except Exception:
+        _v7_fetch = {
+            "ok": False,
+            "reason": "snapshot_error",
+            "rows": [],
+        }
+
+    if _v7_fetch.get("ok"):
+        _v7_grouped = _group_snapshot_rows(
+            _v7_fetch.get("rows", []),
+            [v.get("video_id") for v in public_videos],
+        )
+
+        _v7_recent_videos = []
+        for _v in public_videos:
+            _raw = _v.get("published_raw")
+            if not _raw:
+                continue
+            try:
+                _pdt = datetime.fromisoformat(
+                    _raw.replace("Z", "+00:00")
+                ).astimezone(KST)
+                _v7_recent_videos.append((_pdt, _v))
+            except Exception:
+                pass
+
+        _v7_recent_videos.sort(key=lambda x: x[0], reverse=True)
+        _v7_recent_videos = _v7_recent_videos[:20]
+
+        if _v7_recent_videos:
+            _v7_lookup = {}
+            _v7_options = []
+            for _pdt, _v in _v7_recent_videos:
+                _label = (
+                    f"{_pdt.strftime('%Y.%m.%d')} | "
+                    f"{_v.get('title', '제목 없음')} | "
+                    f"{int(_v.get('views', 0) or 0):,}회"
+                )
+                _key = f"{_label} [{_v.get('video_id')}]"
+                _v7_lookup[_key] = _v
+                _v7_options.append(_key)
+
+            _v7_selected = st.selectbox(
+                "기준 시점 확인할 영상",
+                _v7_options,
+                format_func=lambda x: x.rsplit(" [", 1)[0],
+                key="v7_snapshot_milestone_video",
+            )
+            _v7_video = _v7_lookup[_v7_selected]
+            _v7_rows = _v7_grouped.get(_v7_video.get("video_id"), [])
+
+            if _v7_rows:
+                _v7_table = pd.DataFrame(
+                    _snapshot_milestone_table(
+                        _v7_video,
+                        _v7_rows,
+                        datetime.now(timezone.utc),
+                    )
+                )
+                st.dataframe(
+                    _v7_table,
+                    hide_index=True,
+                    use_container_width=True,
+                )
+
+                _g_0_6 = _snapshot_interval_gain(
+                    _v7_video, _v7_rows, 0, 6, datetime.now(timezone.utc)
+                )
+                _g_6_24 = _snapshot_interval_gain(
+                    _v7_video, _v7_rows, 6, 24, datetime.now(timezone.utc)
+                )
+                _g_24_72 = _snapshot_interval_gain(
+                    _v7_video, _v7_rows, 24, 72, datetime.now(timezone.utc)
+                )
+
+                _g1, _g2, _g3 = st.columns(3)
+                _g1.metric(
+                    "0~6시간 증가",
+                    (
+                        f"+{_g_0_6['gain']:,}회"
+                        if _g_0_6 and _g_0_6.get("gain") is not None
+                        else "데이터 부족"
+                    ),
+                )
+                _g2.metric(
+                    "6~24시간 증가",
+                    (
+                        f"+{_g_6_24['gain']:,}회"
+                        if _g_6_24 and _g_6_24.get("gain") is not None
+                        else "데이터 부족"
+                    ),
+                )
+                _g3.metric(
+                    "24~72시간 증가",
+                    (
+                        f"+{_g_24_72['gain']:,}회"
+                        if _g_24_72 and _g_24_72.get("gain") is not None
+                        else "데이터 부족"
+                    ),
+                )
+
+                st.caption(
+                    "※ 조회수 조정으로 누적값이 줄어든 구간은 증가량을 억지로 계산하지 않습니다."
+                )
+            else:
+                st.caption("⏳ 선택한 영상의 스냅샷이 아직 충분하지 않습니다.")
+        else:
+            st.caption("최근 공개 영상이 없습니다.")
+    else:
+        st.caption("⚠️ V7 스냅샷 기준 시점 데이터를 불러오지 못했습니다.")
+
+    st.divider()
 
     # -----------------------------
     # 채널 추세
