@@ -2401,9 +2401,23 @@ if page == "📈 성장 분석":
 
     if _snapshot_fetch.get("ok"):
         _snapshot_video_count = len(_snapshot_by_video)
-        st.caption(
-            f"⚡ 스냅샷 성장 데이터 연결 · 현재 분석 가능한 영상 {_snapshot_video_count}개"
-        )
+        _snapshot_row_count = len(_snapshot_fetch.get("rows", []))
+
+        if _snapshot_video_count > 0:
+            st.caption(
+                f"⚡ 스냅샷 성장 데이터 연결 · 현재 분석 가능한 영상 {_snapshot_video_count}개"
+            )
+        elif _snapshot_row_count == 0:
+            st.caption(
+                "⏳ 최근 4일 스냅샷 데이터가 없어 성장상태 분석을 기다리는 중입니다. "
+                "수집이 다시 시작되면 자동으로 표시됩니다."
+            )
+        else:
+            st.caption(
+                "⏳ 최근 스냅샷은 확인됐지만 현재 성장 분석 대상 영상과 매칭되는 데이터가 없습니다. "
+                "데이터가 더 쌓이면 자동으로 표시됩니다."
+            )
+
         if _snapshot_fetch.get("truncated"):
             st.warning("스냅샷 조회량이 많아 일부 최신 데이터만 사용 중입니다.")
     elif _snapshot_fetch.get("reason") == "not_configured":
@@ -2901,6 +2915,18 @@ if page == "📈 성장 분석":
                         st.caption("비교 가능한 시간대의 스냅샷이 더 쌓이면 자동으로 판정합니다.")
                     if _snapshot_state.get("note"):
                         st.caption(f"※ {_snapshot_state['note']}")
+                elif _snapshot_fetch.get("ok"):
+                    if len(_snapshot_fetch.get("rows", [])) == 0:
+                        st.caption(
+                            "⏳ 최근 4일 스냅샷 데이터가 없습니다. "
+                            "새 스냅샷이 쌓이면 최근 성장속도를 자동으로 계산합니다."
+                        )
+                    else:
+                        st.caption(
+                            "⏳ 이 영상의 비교 가능한 스냅샷 데이터가 아직 부족합니다. "
+                            "데이터가 더 쌓이면 자동으로 판정합니다."
+                        )
+                    st.caption(f"현재 일별 Analytics 참고: {_daily_trend}")
                 elif _snapshot_fetch.get("reason") == "not_configured":
                     st.caption("⏳ Supabase 스냅샷 읽기 설정 후 최근 성장속도가 표시됩니다.")
                     st.caption(f"현재 일별 Analytics 참고: {_daily_trend}")
