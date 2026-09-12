@@ -4728,72 +4728,226 @@ if page == "🧪 운영":
     def _ops_excel_bytes():
         _buf = BytesIO()
 
-        _goal_df = pd.DataFrame(
+        _goal_rows = (
             _export_goal.get("rows", [])
             if _export_goal.get("ok") else []
         )
-        _note_df = pd.DataFrame(
+        _note_rows = (
             _export_notes.get("rows", [])
             if _export_notes.get("ok") else []
         )
-        _exp_df = pd.DataFrame(
+        _exp_rows = (
             _export_experiments.get("rows", [])
             if _export_experiments.get("ok") else []
         )
 
-        # 태그 리스트는 Excel에서 읽기 쉬운 문자열로 변환
-        if "tags" in _note_df.columns:
-            _note_df["tags"] = _note_df["tags"].apply(
-                lambda x: ", ".join(x) if isinstance(x, list) else str(x or "")
-            )
+        # -------------------------------------------------
+        # Excel은 데이터가 0건이어도 "틀"을 항상 유지
+        # -------------------------------------------------
+        _goal_columns = [
+            "목표명",
+            "목표값",
+            "단위",
+            "시작일",
+            "종료일",
+            "상태",
+            "메모",
+            "생성일",
+            "수정일",
+        ]
+
+        _note_columns = [
+            "영상 ID",
+            "제목",
+            "업로드일",
+            "현재 조회수",
+            "주제",
+            "태그",
+            "첫 문장",
+            "첫 장면",
+            "훅 유형",
+            "구조",
+            "내 코멘트",
+            "잘된 점",
+            "아쉬운 점 / 개선점",
+            "다음에 반복하거나 바꿀 것",
+            "출처",
+            "수정일",
+        ]
+
+        _experiment_columns = [
+            "실험 ID",
+            "실험명",
+            "가설",
+            "변경 내용",
+            "시작일",
+            "상태",
+            "결과 메모",
+            "생성일",
+            "수정일",
+        ]
 
         _video_lookup_export = {
             v.get("video_id"): v
             for v in public_videos
         }
 
-        if not _note_df.empty and "video_id" in _note_df.columns:
-            _note_df["current_views"] = _note_df["video_id"].map(
-                lambda vid: int(
-                    _video_lookup_export.get(vid, {}).get("views", 0) or 0
-                )
-            )
-            _note_df["published_at"] = _note_df["video_id"].map(
-                lambda vid: _video_lookup_export.get(vid, {}).get("published_raw", "")
-            )
+        # 목표
+        _goal_export_rows = []
+        for _row in _goal_rows:
+            _goal_export_rows.append({
+                "목표명": _row.get("title") or _row.get("goal_name") or "",
+                "목표값": _row.get("target_value") if _row.get("target_value") is not None else "",
+                "단위": _row.get("unit") or "",
+                "시작일": _row.get("start_date") or "",
+                "종료일": _row.get("end_date") or "",
+                "상태": _row.get("status") or "",
+                "메모": _row.get("note") or _row.get("memo") or "",
+                "생성일": _row.get("created_at") or "",
+                "수정일": _row.get("updated_at") or "",
+            })
+
+        _goal_df = pd.DataFrame(
+            _goal_export_rows,
+            columns=_goal_columns,
+        )
+
+        # 영상 기록
+        _note_export_rows = []
+        for _row in _note_rows:
+            _vid = _row.get("video_id")
+            _video = _video_lookup_export.get(_vid, {})
+            _tags = _row.get("tags") or []
+            if isinstance(_tags, list):
+                _tags = ", ".join(str(x) for x in _tags)
+            else:
+                _tags = str(_tags or "")
+
+            _note_export_rows.append({
+                "영상 ID": _vid or "",
+                "제목": _row.get("title") or _video.get("title") or "",
+                "업로드일": _video.get("published_raw") or "",
+                "현재 조회수": int(_video.get("views", 0) or 0),
+                "주제": _row.get("topic") or "",
+                "태그": _tags,
+                "첫 문장": _row.get("first_line") or "",
+                "첫 장면": _row.get("first_scene") or "",
+                "훅 유형": _row.get("hook_type") or "",
+                "구조": _row.get("script_structure") or "",
+                "내 코멘트": _row.get("user_comment") or "",
+                "잘된 점": _row.get("what_worked_user") or "",
+                "아쉬운 점 / 개선점": _row.get("what_failed_user") or "",
+                "다음에 반복하거나 바꿀 것": _row.get("next_use_user") or "",
+                "출처": _row.get("source") or "user",
+                "수정일": _row.get("updated_at") or "",
+            })
+
+        _note_df = pd.DataFrame(
+            _note_export_rows,
+            columns=_note_columns,
+        )
+
+        # 실험 기록
+        _exp_export_rows = []
+        for _row in _exp_rows:
+            _exp_export_rows.append({
+                "실험 ID": _row.get("id") or "",
+                "실험명": _row.get("title") or "",
+                "가설": _row.get("hypothesis") or "",
+                "변경 내용": _row.get("change_made") or "",
+                "시작일": _row.get("start_date") or "",
+                "상태": _row.get("status") or "",
+                "결과 메모": _row.get("result_note") or "",
+                "생성일": _row.get("created_at") or "",
+                "수정일": _row.get("updated_at") or "",
+            })
+
+        _exp_df = pd.DataFrame(
+            _exp_export_rows,
+            columns=_experiment_columns,
+        )
 
         with pd.ExcelWriter(_buf, engine="openpyxl") as _writer:
-            (_goal_df if not _goal_df.empty else pd.DataFrame(
-                [{"안내": "저장된 목표 기록이 없습니다."}]
-            )).to_excel(_writer, sheet_name="목표", index=False)
-
-            (_note_df if not _note_df.empty else pd.DataFrame(
-                [{"안내": "저장된 영상 기록이 없습니다."}]
-            )).to_excel(_writer, sheet_name="영상 기록", index=False)
-
-            (_exp_df if not _exp_df.empty else pd.DataFrame(
-                [{"안내": "저장된 실험 기록이 없습니다."}]
-            )).to_excel(_writer, sheet_name="실험 기록", index=False)
-
             _summary = pd.DataFrame([
                 {"항목": "채널", "값": channel_info.get("channel_name", "")},
+                {"항목": "목표 기록 수", "값": len(_goal_df)},
                 {"항목": "영상 기록 수", "값": len(_note_df)},
                 {"항목": "실험 기록 수", "값": len(_exp_df)},
                 {"항목": "생성 시각", "값": datetime.now(KST).strftime("%Y-%m-%d %H:%M KST")},
             ])
+
             _summary.to_excel(_writer, sheet_name="요약", index=False)
+            _goal_df.to_excel(_writer, sheet_name="목표", index=False)
+            _note_df.to_excel(_writer, sheet_name="영상 기록", index=False)
+            _exp_df.to_excel(_writer, sheet_name="실험 기록", index=False)
+
+            # 보기 편한 기본 서식
+            _column_widths = {
+                "요약": {
+                    "A": 18,
+                    "B": 34,
+                },
+                "목표": {
+                    "A": 28,
+                    "B": 14,
+                    "C": 12,
+                    "D": 14,
+                    "E": 14,
+                    "F": 14,
+                    "G": 36,
+                    "H": 22,
+                    "I": 22,
+                },
+                "영상 기록": {
+                    "A": 18,
+                    "B": 42,
+                    "C": 22,
+                    "D": 14,
+                    "E": 22,
+                    "F": 24,
+                    "G": 36,
+                    "H": 30,
+                    "I": 18,
+                    "J": 26,
+                    "K": 42,
+                    "L": 42,
+                    "M": 42,
+                    "N": 42,
+                    "O": 12,
+                    "P": 22,
+                },
+                "실험 기록": {
+                    "A": 12,
+                    "B": 32,
+                    "C": 42,
+                    "D": 42,
+                    "E": 14,
+                    "F": 14,
+                    "G": 42,
+                    "H": 22,
+                    "I": 22,
+                },
+            }
 
             for _ws in _writer.book.worksheets:
                 _ws.freeze_panes = "A2"
-                for _col_cells in _ws.columns:
-                    _max_len = 0
-                    _letter = _col_cells[0].column_letter
-                    for _cell in _col_cells:
-                        _max_len = max(
-                            _max_len,
-                            len(str(_cell.value)) if _cell.value is not None else 0,
+                _ws.auto_filter.ref = _ws.dimensions
+
+                # 헤더 굵게 + 행 높이
+                for _cell in _ws[1]:
+                    _cell.font = _cell.font.copy(bold=True)
+                _ws.row_dimensions[1].height = 22
+
+                for _col, _width in _column_widths.get(_ws.title, {}).items():
+                    _ws.column_dimensions[_col].width = _width
+
+                # 텍스트가 긴 기록은 줄바꿈
+                for _row in _ws.iter_rows(min_row=2):
+                    for _cell in _row:
+                        _cell.alignment = _cell.alignment.copy(
+                            vertical="top",
+                            wrap_text=True,
                         )
-                    _ws.column_dimensions[_letter].width = min(max(_max_len + 2, 10), 45)
 
         _buf.seek(0)
         return _buf.getvalue()
