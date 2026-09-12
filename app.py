@@ -2015,7 +2015,407 @@ def add_excel_table(ws, table_name):
     ws.add_table(table)
 
 
+
 if page == "🏠 홈":
+    # =========================================================
+    # V7.5 — Home Action Center
+    # "숫자 나열"보다 "지금 무엇을 봐야 하는지"를 먼저 보여줍니다.
+    # 원인 단정 없이 실제 데이터/관찰 사실만 사용합니다.
+    # =========================================================
+
+    # -----------------------------
+    # 기본 집계
+    # -----------------------------
+    _home_total_views = sum(int(v.get("views", 0) or 0) for v in public_videos)
+    _home_avg_views = (
+        _home_total_views / len(public_videos)
+        if public_videos else 0
+    )
+    _home_view_values = sorted(
+        int(v.get("views", 0) or 0)
+        for v in public_videos
+    )
+    _home_median_views = (
+        float(pd.Series(_home_view_values).median())
+        if _home_view_values else 0
+    )
+
+    # 최근 7일 vs 이전 7일
+    _home_end = today - timedelta(days=1)
+    _home_start = _home_end - timedelta(days=6)
+    _home_prev_end = _home_start - timedelta(days=1)
+    _home_prev_start = _home_prev_end - timedelta(days=6)
+
+    _home_week_now = None
+    _home_week_prev = None
+    try:
+        _home_week_now = get_period_summary(
+            yt_analytics,
+            _home_start,
+            _home_end,
+        )
+        _home_week_prev = get_period_summary(
+            yt_analytics,
+            _home_prev_start,
+            _home_prev_end,
+        )
+    except Exception:
+        pass
+
+    def _home_pct_change(cur, prev):
+        if prev in (None, 0):
+            return None
+        return ((cur - prev) / abs(prev)) * 100
+
+    _home_views_change = None
+    _home_watch_change = None
+    _home_sub_delta = None
+
+    if _home_week_now and _home_week_prev:
+        _home_views_change = _home_pct_change(
+            _home_week_now.get("views", 0),
+            _home_week_prev.get("views", 0),
+        )
+        _home_watch_change = _home_pct_change(
+            _home_week_now.get("watch_minutes", 0),
+            _home_week_prev.get("watch_minutes", 0),
+        )
+        _home_sub_delta = (
+            int(_home_week_now.get("net_subscribers", 0) or 0)
+            - int(_home_week_prev.get("net_subscribers", 0) or 0)
+        )
+
+    # 최근 10개 중 중앙값 이하
+    _home_recent = []
+    for _hv in public_videos:
+        _raw = _hv.get("published_raw")
+        if not _raw:
+            continue
+        try:
+            _hdt = datetime.fromisoformat(
+                _raw.replace("Z", "+00:00")
+            ).astimezone(KST)
+            _home_recent.append((_hdt, _hv))
+        except Exception:
+            pass
+
+    _home_recent.sort(key=lambda x: x[0], reverse=True)
+    _home_recent10 = _home_recent[:10]
+    _home_below_median = sum(
+        1
+        for _, _v in _home_recent10
+        if int(_v.get("views", 0) or 0) < _home_median_views
+    )
+
+    # 최근 스냅샷 기반 "지금 볼 영상"
+    _home_snapshot_by_video = {}
+    _home_snapshot_fetch = {"ok": False, "rows": []}
+    try:
+        _home_channel_id = _connected_youtube_channel_id(youtube)
+        _home_since = (
+            datetime.now(timezone.utc) - timedelta(days=4)
+        ).replace(minute=0, second=0, microsecond=0).isoformat()
+        _home_snapshot_fetch = _fetch_channel_snapshots(
+            _home_channel_id,
+            _home_since,
+        )
+        if _home_snapshot_fetch.get("ok"):
+            _home_snapshot_by_video = _group_snapshot_rows(
+                _home_snapshot_fetch.get("rows", []),
+                [v.get("video_id") for v in public_videos],
+            )
+    except Exception:
+        pass
+
+    _home_watch_candidates = []
+    _home_now_utc = datetime.now(timezone.utc)
+
+    for _hdt, _v in _home_recent[:20]:
+        _rows = _home_snapshot_by_video.get(_v.get("video_id"), [])
+        if _rows:
+            _state = _snapshot_growth_state(
+                _v,
+                _rows,
+                _home_now_utc,
+            )
+            _event = _snapshot_special_event(
+                _v,
+                _state,
+                _rows,
+                _home_now_utc,
+            )
+        else:
+            _state = {
+                "state": "⏳ 데이터 축적 중",
+                "confidence": "낮음",
+                "recent_gain": None,
+                "previous_gain": None,
+            }
+            _event = {"label": None}
+
+        _priority = 0
+        if _event.get("label") == "🚀 급상승":
+            _priority = 5
+        elif _event.get("label") == "🔥 재상승":
+            _priority = 4
+        elif _state.get("state") == "↗ 상승":
+            _priority = 3
+        elif _state.get("state") == "↘ 하락":
+            _priority = 2
+        elif _state.get("state") == "⏳ 데이터 축적 중":
+            _priority = 1
+
+        _home_watch_candidates.append({
+            "video": _v,
+            "published": _hdt,
+            "state": _state,
+            "event": _event,
+            "priority": _priority,
+        })
+
+    _home_watch_candidates.sort(
+        key=lambda x: (
+            x["priority"],
+            x["published"],
+        ),
+        reverse=True,
+    )
+    _home_watch = _home_watch_candidates[:3]
+
+    # 채널 패턴: 최근 20개 업로드 시간대 평균
+    _home_band_labels = {
+        "새벽 00~05시": [],
+        "오전 06~11시": [],
+        "오후 12~17시": [],
+        "저녁 18~23시": [],
+    }
+
+    for _hdt, _v in _home_recent[:20]:
+        _hour = _hdt.hour
+        if 0 <= _hour <= 5:
+            _band = "새벽 00~05시"
+        elif 6 <= _hour <= 11:
+            _band = "오전 06~11시"
+        elif 12 <= _hour <= 17:
+            _band = "오후 12~17시"
+        else:
+            _band = "저녁 18~23시"
+        _home_band_labels[_band].append(
+            int(_v.get("views", 0) or 0)
+        )
+
+    _home_band_summary = []
+    for _band, _vals in _home_band_labels.items():
+        if not _vals:
+            continue
+        _home_band_summary.append({
+            "band": _band,
+            "count": len(_vals),
+            "avg": sum(_vals) / len(_vals),
+        })
+
+    _home_band_summary.sort(
+        key=lambda x: x["avg"],
+        reverse=True,
+    )
+
+    # -----------------------------
+    # 1) 오늘의 상태
+    # -----------------------------
+    st.markdown("### 오늘의 채널 상태")
+
+    _s1, _s2, _s3 = st.columns(3)
+
+    with _s1:
+        if _home_week_now and _home_views_change is not None:
+            _direction = "↑" if _home_views_change > 0 else "↓" if _home_views_change < 0 else "→"
+            st.metric(
+                "최근 7일 조회수",
+                f"{int(_home_week_now.get('views', 0) or 0):,}회",
+                f"{_direction} {abs(_home_views_change):.1f}% · 이전 7일 대비",
+            )
+        elif _home_week_now:
+            st.metric(
+                "최근 7일 조회수",
+                f"{int(_home_week_now.get('views', 0) or 0):,}회",
+                "이전 기간 비교 데이터 부족",
+            )
+        else:
+            st.metric(
+                "최근 7일 조회수",
+                "⏳ 집계 중",
+            )
+
+    with _s2:
+        st.metric(
+            "최근 10개 중 중앙값 이하",
+            f"{_home_below_median}개",
+            f"채널 중앙값 {_home_median_views:,.0f}회 기준",
+        )
+
+    with _s3:
+        _special_count = sum(
+            1
+            for x in _home_watch_candidates
+            if x["event"].get("label") in ("🚀 급상승", "🔥 재상승")
+        )
+        st.metric(
+            "현재 특이 성장",
+            f"{_special_count}개",
+            "급상승·재상승 감지 기준",
+        )
+
+    # -----------------------------
+    # 2) 팩트 기반 인사이트
+    # -----------------------------
+    st.markdown("### 지금 확인할 변화")
+
+    _insights = []
+
+    if _home_views_change is not None and _home_week_now:
+        if abs(_home_views_change) >= 10:
+            _insights.append({
+                "title": "최근 7일 조회수 변화",
+                "value": f"{_home_views_change:+.1f}%",
+                "desc": (
+                    f"{_home_start} ~ {_home_end} 기준 · "
+                    "이전 7일과 비교한 실제 Analytics 변화"
+                ),
+            })
+
+    if _home_recent10:
+        _insights.append({
+            "title": "최근 영상 분포",
+            "value": f"{_home_below_median}/{len(_home_recent10)}",
+            "desc": (
+                f"최근 {len(_home_recent10)}개 중 {_home_below_median}개가 "
+                f"채널 전체 중앙값 {_home_median_views:,.0f}회 미만"
+            ),
+        })
+
+    if _home_band_summary:
+        _best_band = _home_band_summary[0]
+        _band_conf = (
+            "낮음" if _best_band["count"] < 3
+            else "보통" if _best_band["count"] < 6
+            else "높음"
+        )
+        _insights.append({
+            "title": "현재 시간대 상위 그룹",
+            "value": _best_band["band"],
+            "desc": (
+                f"최근 표본 평균 {_best_band['avg']:,.0f}회 · "
+                f"표본 {_best_band['count']}개 · 신뢰도 {_band_conf}"
+            ),
+        })
+
+    if _insights:
+        _icols = st.columns(min(3, len(_insights)))
+        for _idx, _item in enumerate(_insights[:3]):
+            with _icols[_idx]:
+                st.markdown(
+                    f"""
+                    <div class="ss-mini-card">
+                        <div class="ss-mini-label">{_item['title']}</div>
+                        <div class="ss-mini-title">{_item['value']}</div>
+                        <div class="ss-mini-meta">{_item['desc']}</div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+
+    # -----------------------------
+    # 3) 지금 볼 영상
+    # -----------------------------
+    st.markdown("### 지금 볼 영상")
+
+    if _home_watch:
+        _vcols = st.columns(len(_home_watch))
+
+        for _idx, _item in enumerate(_home_watch):
+            _v = _item["video"]
+            _state = _item["state"]
+            _event = _item["event"]
+
+            with _vcols[_idx]:
+                if _v.get("thumbnail"):
+                    st.image(
+                        _v["thumbnail"],
+                        use_container_width=True,
+                    )
+
+                _status_label = (
+                    _event.get("label")
+                    or _state.get("state")
+                    or "⏳ 데이터 축적 중"
+                )
+
+                st.markdown(
+                    f"**{_v.get('title', '제목 없음')}**"
+                )
+                st.caption(
+                    f"{_item['published'].strftime('%m.%d %H:%M')} · "
+                    f"{int(_v.get('views', 0) or 0):,}회"
+                )
+                st.caption(
+                    f"{_status_label} · 신뢰도 {_state.get('confidence', '낮음')}"
+                )
+    else:
+        st.info("아직 확인할 최근 영상이 없습니다.")
+
+    # -----------------------------
+    # 4) 데이터 신뢰 상태
+    # -----------------------------
+    st.markdown("### 데이터 상태")
+
+    _d1, _d2, _d3 = st.columns(3)
+
+    _d1.metric(
+        "YouTube 연결",
+        "정상",
+        "읽기 전용",
+    )
+
+    if _home_snapshot_fetch.get("ok"):
+        _snap_rows = _home_snapshot_fetch.get("rows", [])
+        _d2.metric(
+            "스냅샷",
+            "정상",
+            f"최근 조회 {_home_snapshot_fetch.get('status', 'OK')}",
+        )
+        if _snap_rows:
+            _latest_snap = max(
+                _parse_utc(r.get("captured_at"))
+                for r in _snap_rows
+                if r.get("captured_at")
+            )
+            _d3.metric(
+                "마지막 스냅샷",
+                _latest_snap.astimezone(KST).strftime("%m.%d %H:%M"),
+                "Shorts Scope 자체 수집",
+            )
+        else:
+            _d3.metric(
+                "마지막 스냅샷",
+                "데이터 부족",
+            )
+    else:
+        _d2.metric(
+            "스냅샷",
+            "⚠️ 확인 필요",
+        )
+        _d3.metric(
+            "마지막 스냅샷",
+            "데이터 부족",
+        )
+
+    st.divider()
+
+    # -----------------------------
+    # 5) 기존 핵심 성과 — 상세 영역으로 한 단계 아래
+    # -----------------------------
+    st.markdown("### 채널 기본 정보")
+
     c1, c2, c3 = st.columns(3)
 
     c1.metric(
@@ -2032,59 +2432,6 @@ if page == "🏠 홈":
         "공개 영상",
         f"{len(public_videos):,}개"
     )
-
-    _home_recent = []
-    for _hv in public_videos:
-        _raw = _hv.get("published_raw")
-        if not _raw:
-            continue
-        try:
-            _hdt = datetime.fromisoformat(_raw.replace("Z", "+00:00")).astimezone(KST)
-            _home_recent.append((_hdt, _hv))
-        except Exception:
-            pass
-    _home_recent.sort(key=lambda x: x[0], reverse=True)
-    _home_recent = _home_recent[:3]
-
-    if _home_recent:
-        _cards = []
-        for _idx, (_hdt, _hv) in enumerate(_home_recent, start=1):
-            _title = (
-                str(_hv.get("title", "제목 없음"))
-                .replace("&", "&amp;")
-                .replace("<", "&lt;")
-                .replace(">", "&gt;")
-            )
-            _meta = (
-                f"{_hdt.strftime('%m.%d %H:%M')} · "
-                f"{int(_hv.get('views', 0) or 0):,}회"
-            )
-            _cards.append(
-                f'<div class="ss-mini-card">'
-                f'<div class="ss-mini-label">최근 업로드 {_idx}</div>'
-                f'<div class="ss-mini-title">{_title}</div>'
-                f'<div class="ss-mini-meta">{_meta}</div>'
-                f'</div>'
-            )
-
-        _home_cards_html = (
-            '<div class="ss-home-strip">'
-            + "".join(_cards)
-            + '</div>'
-        )
-        st.markdown(
-            _home_cards_html,
-            unsafe_allow_html=True,
-        )
-
-    st.divider()
-
-    # =========================================================
-    # 홈 — 공개 영상 핵심 성과
-    # =========================================================
-
-    st.markdown("### 채널 성과")
-    st.caption("현재 공개 상태인 영상 전체의 누적 성과입니다.")
 
     if public_videos:
         total_views = sum(
@@ -2132,25 +2479,22 @@ if page == "🏠 홈":
         )
 
         c4.metric(
-            "공개 영상에서 발생한 순구독자",
+            "공개 영상 순구독자",
             f"{total_net_subscribers:+,}명"
         )
-        c4.caption("구독자 획득 - 구독자 이탈")
     else:
         st.info("현재 공개 영상이 없습니다.")
 
     with st.expander(
-        f"🎬 영상 상태 상세 · 전체 {len(videos):,}개",
+        f"영상 상태 · 전체 {len(videos):,}개",
         expanded=False,
     ):
         c1, c2, c3, c4 = st.columns(4)
-        c1.metric("🟢 공개", f"{len(public_videos):,}개")
-        c2.metric("🟡 예약", f"{len(scheduled_videos):,}개")
-        c3.metric("🔴 비공개", f"{len(private_videos):,}개")
-        c4.metric("🔵 일부공개", f"{len(unlisted_videos):,}개")
+        c1.metric("공개", f"{len(public_videos):,}개")
+        c2.metric("예약", f"{len(scheduled_videos):,}개")
+        c3.metric("비공개", f"{len(private_videos):,}개")
+        c4.metric("일부공개", f"{len(unlisted_videos):,}개")
         st.caption("예약·비공개·일부공개 영상은 성과 평균과 순위에서 제외됩니다.")
-
-    st.divider()
 
     st.markdown("### 상세 분석")
     st.caption("기간 성과·일별 차트·월간 달력·과거 일별 분석은 필요할 때만 펼쳐서 확인합니다.")
