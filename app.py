@@ -3968,37 +3968,59 @@ if page == "📊 채널 패턴":
     if not _pattern_videos:
         st.info("분석할 공개 영상이 없습니다.")
     else:
-        _max_recent = min(50, len(_pattern_videos))
-        _choices = [x for x in [10, 20, 50] if x <= _max_recent]
-        if not _choices:
-            _choices = [_max_recent]
+        _max_recent = len(_pattern_videos)
 
-        if (
-            "v72_applied_recent_n" not in st.session_state
-            or st.session_state.v72_applied_recent_n not in _choices
-        ):
-            st.session_state.v72_applied_recent_n = _choices[0]
+        if "v77_pattern_range_mode" not in st.session_state:
+            st.session_state.v77_pattern_range_mode = "최근 20개"
+        if "v77_pattern_custom_n" not in st.session_state:
+            st.session_state.v77_pattern_custom_n = min(100, _max_recent)
 
-        with st.form("v72_pattern_range_form"):
-            _recent_n_input = st.radio(
-                "최근 영상 범위",
-                options=_choices,
-                index=_choices.index(st.session_state.v72_applied_recent_n),
-                format_func=lambda x: f"최근 {x}개",
-                horizontal=True,
-                key="v72_recent_video_count_input",
+        _range_options = ["최근 10개", "최근 20개", "최근 50개", "최근 100개", "전체", "직접 입력"]
+
+        with st.form("v77_pattern_range_form"):
+            _range_mode_input = st.selectbox(
+                "분석할 최근 영상 범위",
+                options=_range_options,
+                index=_range_options.index(st.session_state.v77_pattern_range_mode)
+                if st.session_state.v77_pattern_range_mode in _range_options
+                else 1,
+                key="v77_pattern_range_mode_input",
             )
+
+            _custom_n_input = st.number_input(
+                "직접 입력할 영상 수",
+                min_value=1,
+                max_value=max(_max_recent, 1),
+                value=min(
+                    int(st.session_state.v77_pattern_custom_n or 1),
+                    max(_max_recent, 1),
+                ),
+                step=10,
+                disabled=_range_mode_input != "직접 입력",
+                key="v77_pattern_custom_n_input",
+            )
+
             _apply_recent_n = st.form_submit_button(
-                "🔍 적용",
-                type="primary",
+                "적용",
                 use_container_width=True,
             )
 
         if _apply_recent_n:
-            st.session_state.v72_applied_recent_n = _recent_n_input
+            st.session_state.v77_pattern_range_mode = _range_mode_input
+            st.session_state.v77_pattern_custom_n = int(_custom_n_input)
 
-        _recent_n = st.session_state.v72_applied_recent_n
-        st.caption(f"현재 적용: 최근 {_recent_n}개")
+        _range_mode = st.session_state.v77_pattern_range_mode
+
+        if _range_mode == "전체":
+            _recent_n = _max_recent
+        elif _range_mode == "직접 입력":
+            _recent_n = min(int(st.session_state.v77_pattern_custom_n), _max_recent)
+        else:
+            _recent_n = min(int(re.sub(r"\D", "", _range_mode)), _max_recent)
+
+        st.caption(
+            f"현재 적용: 최근 {_recent_n:,}개 / 분석 가능한 공개 영상 {_max_recent:,}개"
+        )
         _recent = _pattern_videos[: int(_recent_n)]
         _recent_analytics = [v for v in _recent if v.get("_analytics_ready")]
 
@@ -4669,14 +4691,188 @@ if page == "🧪 운영":
 
     st.divider()
 
+    # =====================================================
+    # V7.7 운영 기록 전체 Excel Export
+    # =====================================================
+    st.markdown("### 운영 기록 내보내기")
+    st.caption("목표 · 영상 메모/태그 · 실험 기록을 한 파일에 시트별로 저장합니다.")
+
+    _export_goal = _supabase_table_get(
+        "channel_goals",
+        {
+            "select": "*",
+            "channel_id": f"eq.{_ops_channel_id}",
+            "order": "updated_at.desc",
+            "limit": 1000,
+        },
+    )
+    _export_notes = _supabase_table_get(
+        "video_notes",
+        {
+            "select": "*",
+            "channel_id": f"eq.{_ops_channel_id}",
+            "order": "updated_at.desc",
+            "limit": 10000,
+        },
+    )
+    _export_experiments = _supabase_table_get(
+        "experiments",
+        {
+            "select": "*",
+            "channel_id": f"eq.{_ops_channel_id}",
+            "order": "created_at.desc",
+            "limit": 10000,
+        },
+    )
+
+    def _ops_excel_bytes():
+        _buf = BytesIO()
+
+        _goal_df = pd.DataFrame(
+            _export_goal.get("rows", [])
+            if _export_goal.get("ok") else []
+        )
+        _note_df = pd.DataFrame(
+            _export_notes.get("rows", [])
+            if _export_notes.get("ok") else []
+        )
+        _exp_df = pd.DataFrame(
+            _export_experiments.get("rows", [])
+            if _export_experiments.get("ok") else []
+        )
+
+        # 태그 리스트는 Excel에서 읽기 쉬운 문자열로 변환
+        if "tags" in _note_df.columns:
+            _note_df["tags"] = _note_df["tags"].apply(
+                lambda x: ", ".join(x) if isinstance(x, list) else str(x or "")
+            )
+
+        _video_lookup_export = {
+            v.get("video_id"): v
+            for v in public_videos
+        }
+
+        if not _note_df.empty and "video_id" in _note_df.columns:
+            _note_df["current_views"] = _note_df["video_id"].map(
+                lambda vid: int(
+                    _video_lookup_export.get(vid, {}).get("views", 0) or 0
+                )
+            )
+            _note_df["published_at"] = _note_df["video_id"].map(
+                lambda vid: _video_lookup_export.get(vid, {}).get("published_raw", "")
+            )
+
+        with pd.ExcelWriter(_buf, engine="openpyxl") as _writer:
+            (_goal_df if not _goal_df.empty else pd.DataFrame(
+                [{"안내": "저장된 목표 기록이 없습니다."}]
+            )).to_excel(_writer, sheet_name="목표", index=False)
+
+            (_note_df if not _note_df.empty else pd.DataFrame(
+                [{"안내": "저장된 영상 기록이 없습니다."}]
+            )).to_excel(_writer, sheet_name="영상 기록", index=False)
+
+            (_exp_df if not _exp_df.empty else pd.DataFrame(
+                [{"안내": "저장된 실험 기록이 없습니다."}]
+            )).to_excel(_writer, sheet_name="실험 기록", index=False)
+
+            _summary = pd.DataFrame([
+                {"항목": "채널", "값": channel_info.get("channel_name", "")},
+                {"항목": "영상 기록 수", "값": len(_note_df)},
+                {"항목": "실험 기록 수", "값": len(_exp_df)},
+                {"항목": "생성 시각", "값": datetime.now(KST).strftime("%Y-%m-%d %H:%M KST")},
+            ])
+            _summary.to_excel(_writer, sheet_name="요약", index=False)
+
+            for _ws in _writer.book.worksheets:
+                _ws.freeze_panes = "A2"
+                for _col_cells in _ws.columns:
+                    _max_len = 0
+                    _letter = _col_cells[0].column_letter
+                    for _cell in _col_cells:
+                        _max_len = max(
+                            _max_len,
+                            len(str(_cell.value)) if _cell.value is not None else 0,
+                        )
+                    _ws.column_dimensions[_letter].width = min(max(_max_len + 2, 10), 45)
+
+        _buf.seek(0)
+        return _buf.getvalue()
+
+    st.download_button(
+        "운영 기록 전체 Excel",
+        data=_ops_excel_bytes(),
+        file_name=f"shorts_scope_operations_{today.strftime('%Y%m%d')}.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        use_container_width=True,
+    )
 
 
 if page == "📋 리포트":
     _report_today = today
-    _report_end = _report_today - timedelta(days=1)
-    _report_start = _report_end - timedelta(days=6)
+
+    if "v77_report_mode" not in st.session_state:
+        st.session_state.v77_report_mode = "최근 7일"
+    if "v77_report_custom_start" not in st.session_state:
+        st.session_state.v77_report_custom_start = _report_today - timedelta(days=7)
+    if "v77_report_custom_end" not in st.session_state:
+        st.session_state.v77_report_custom_end = _report_today - timedelta(days=1)
+
+    with st.form("v77_report_period_form"):
+        _report_mode_input = st.selectbox(
+            "리포트 기간",
+            ["최근 7일", "최근 14일", "최근 30일", "최근 90일", "직접 선택"],
+            index=["최근 7일", "최근 14일", "최근 30일", "최근 90일", "직접 선택"].index(
+                st.session_state.v77_report_mode
+            ),
+        )
+
+        _rp1, _rp2 = st.columns(2)
+        with _rp1:
+            _report_custom_start_input = st.date_input(
+                "시작일",
+                value=st.session_state.v77_report_custom_start,
+                disabled=_report_mode_input != "직접 선택",
+            )
+        with _rp2:
+            _report_custom_end_input = st.date_input(
+                "종료일",
+                value=st.session_state.v77_report_custom_end,
+                max_value=_report_today - timedelta(days=1),
+                disabled=_report_mode_input != "직접 선택",
+            )
+
+        _report_apply = st.form_submit_button(
+            "리포트 조회",
+            use_container_width=True,
+        )
+
+    if _report_apply:
+        if (
+            _report_mode_input == "직접 선택"
+            and _report_custom_start_input > _report_custom_end_input
+        ):
+            st.error("시작일은 종료일보다 늦을 수 없습니다.")
+        else:
+            st.session_state.v77_report_mode = _report_mode_input
+            st.session_state.v77_report_custom_start = _report_custom_start_input
+            st.session_state.v77_report_custom_end = _report_custom_end_input
+
+    _report_mode = st.session_state.v77_report_mode
+
+    if _report_mode == "직접 선택":
+        _report_start = st.session_state.v77_report_custom_start
+        _report_end = min(
+            st.session_state.v77_report_custom_end,
+            _report_today - timedelta(days=1),
+        )
+    else:
+        _report_days = int(re.sub(r"\D", "", _report_mode))
+        _report_end = _report_today - timedelta(days=1)
+        _report_start = _report_end - timedelta(days=_report_days - 1)
+
+    _report_span_days = (_report_end - _report_start).days + 1
     _prev_end = _report_start - timedelta(days=1)
-    _prev_start = _prev_end - timedelta(days=6)
+    _prev_start = _prev_end - timedelta(days=_report_span_days - 1)
 
     def _report_upload_count(start_d, end_d):
         _count = 0
@@ -4702,9 +4898,9 @@ if page == "📋 리포트":
     # =====================================================
     # 주간 리포트
     # =====================================================
-    st.markdown("### 최근 7일")
+    st.markdown(f"### 선택 기간 · {_report_span_days}일")
     st.caption(
-        f"{_report_start} ~ {_report_end} ↔ 이전 {_prev_start} ~ {_prev_end} · 오늘 제외"
+        f"{_report_start} ~ {_report_end} ↔ 이전 동일 길이 {_prev_start} ~ {_prev_end} · 오늘 제외"
     )
 
     try:
@@ -4761,18 +4957,18 @@ if page == "📋 리포트":
         _week_rows = pd.DataFrame([
             {
                 "항목": "조회수",
-                "최근 7일": _week_now["views"],
-                "이전 7일": _week_prev["views"],
+                f"현재 {_report_span_days}일": _week_now["views"],
+                f"이전 {_report_span_days}일": _week_prev["views"],
             },
             {
                 "항목": "시청시간(분)",
-                "최근 7일": round(_week_now["watch_minutes"], 1),
-                "이전 7일": round(_week_prev["watch_minutes"], 1),
+                f"현재 {_report_span_days}일": round(_week_now["watch_minutes"], 1),
+                f"이전 {_report_span_days}일": round(_week_prev["watch_minutes"], 1),
             },
             {
                 "항목": "순구독자",
-                "최근 7일": _week_now["net_subscribers"],
-                "이전 7일": _week_prev["net_subscribers"],
+                f"현재 {_report_span_days}일": _week_now["net_subscribers"],
+                f"이전 {_report_span_days}일": _week_prev["net_subscribers"],
             },
         ])
         st.dataframe(_week_rows, hide_index=True, use_container_width=True)
@@ -4782,7 +4978,7 @@ if page == "📋 리포트":
                 "※ 이전 7일 업로드가 0개라 조회수 변화만으로 영상 성과 개선을 단정하지 않습니다."
             )
     else:
-        st.info("⏳ 최근 7일 리포트 데이터를 아직 불러오지 못했습니다.")
+        st.info("⏳ 선택한 기간의 리포트 데이터를 아직 불러오지 못했습니다.")
         if _week_error:
             with st.expander("기술 오류 상세보기"):
                 st.code(_week_error)
@@ -4809,7 +5005,7 @@ if page == "📋 리포트":
         reverse=True,
     )
 
-    st.markdown("### 최근 7일 업로드 성과")
+    st.markdown(f"### 선택 기간 업로드 성과 · {_report_span_days}일")
     if _recent_uploaded:
         _recent_views = [
             int(v.get("views", 0) or 0)
@@ -4845,7 +5041,7 @@ if page == "📋 리포트":
                 )
             )
 
-        st.markdown("#### 이번 주 상위 영상")
+        st.markdown("#### 선택 기간 상위 영상")
         st.markdown('<div class="v76-rank-grid">' + "".join(_top3_cards) + '</div>', unsafe_allow_html=True)
 
         with st.expander("전체 업로드 성과 표 보기", expanded=False):
@@ -5258,24 +5454,115 @@ if page == "📈 성장 분석":
                 if v.get("video_id") == st.session_state.v72_v7_applied_video_id
             )
 
-            with st.form("v72_v7_video_lookup_form"):
-                _v7_selected_input = st.selectbox(
-                    "기준 시점 확인할 영상",
-                    _v7_options,
-                    index=_v7_options.index(_v7_default_key),
-                    format_func=lambda x: x.rsplit(" [", 1)[0],
-                    key="v72_v7_snapshot_video_input",
+            if "v77_v7_search_text" not in st.session_state:
+                st.session_state.v77_v7_search_text = ""
+            if "v77_v7_period" not in st.session_state:
+                st.session_state.v77_v7_period = "최근 90일"
+            if "v77_v7_sort" not in st.session_state:
+                st.session_state.v77_v7_sort = "최신순"
+
+            with st.form("v77_v7_video_search_form"):
+                _v7_search_input = st.text_input(
+                    "영상 제목 검색",
+                    value=st.session_state.v77_v7_search_text,
+                    placeholder="제목 일부를 입력하세요",
                 )
-                _v7_lookup_submit = st.form_submit_button(
-                    "🔍 조회",
-                    type="primary",
+                _vf1, _vf2 = st.columns(2)
+                with _vf1:
+                    _v7_period_input = st.selectbox(
+                        "기간",
+                        ["최근 30일", "최근 90일", "최근 1년", "전체"],
+                        index=["최근 30일", "최근 90일", "최근 1년", "전체"].index(
+                            st.session_state.v77_v7_period
+                        ),
+                    )
+                with _vf2:
+                    _v7_sort_input = st.selectbox(
+                        "정렬",
+                        ["최신순", "조회수순", "오래된순"],
+                        index=["최신순", "조회수순", "오래된순"].index(
+                            st.session_state.v77_v7_sort
+                        ),
+                    )
+                _v7_filter_submit = st.form_submit_button(
+                    "영상 찾기",
                     use_container_width=True,
                 )
 
-            if _v7_lookup_submit:
-                st.session_state.v72_v7_applied_video_id = (
-                    _v7_lookup[_v7_selected_input].get("video_id")
+            if _v7_filter_submit:
+                st.session_state.v77_v7_search_text = _v7_search_input.strip()
+                st.session_state.v77_v7_period = _v7_period_input
+                st.session_state.v77_v7_sort = _v7_sort_input
+
+            _v7_filtered = list(_v7_recent_videos)
+            _needle = st.session_state.v77_v7_search_text.lower().strip()
+
+            if _needle:
+                _v7_filtered = [
+                    pair for pair in _v7_filtered
+                    if _needle in str(pair[1].get("title", "")).lower()
+                ]
+
+            _days_map = {"최근 30일": 30, "최근 90일": 90, "최근 1년": 365}
+            _selected_period = st.session_state.v77_v7_period
+            if _selected_period in _days_map:
+                _cutoff = datetime.now(KST) - timedelta(days=_days_map[_selected_period])
+                _v7_filtered = [
+                    pair for pair in _v7_filtered
+                    if pair[0] >= _cutoff
+                ]
+
+            if st.session_state.v77_v7_sort == "조회수순":
+                _v7_filtered.sort(
+                    key=lambda pair: int(pair[1].get("views", 0) or 0),
+                    reverse=True,
                 )
+            elif st.session_state.v77_v7_sort == "오래된순":
+                _v7_filtered.sort(key=lambda pair: pair[0])
+            else:
+                _v7_filtered.sort(key=lambda pair: pair[0], reverse=True)
+
+            _v7_filtered = _v7_filtered[:100]
+
+            if _v7_filtered:
+                _v7_result_lookup = {}
+                _v7_result_options = []
+                for _pdt, _v in _v7_filtered:
+                    _label = (
+                        f"{_pdt.strftime('%Y.%m.%d')} | "
+                        f"{_v.get('title', '제목 없음')} | "
+                        f"{int(_v.get('views', 0) or 0):,}회"
+                    )
+                    _key = f"{_label} [{_v.get('video_id')}]"
+                    _v7_result_lookup[_key] = _v
+                    _v7_result_options.append(_key)
+
+                _current_key = next(
+                    (
+                        k for k, v in _v7_result_lookup.items()
+                        if v.get("video_id") == st.session_state.v72_v7_applied_video_id
+                    ),
+                    _v7_result_options[0],
+                )
+
+                with st.form("v77_v7_video_pick_form"):
+                    _v7_selected_input = st.selectbox(
+                        f"검색 결과에서 선택 · 최대 100개 표시",
+                        _v7_result_options,
+                        index=_v7_result_options.index(_current_key),
+                        format_func=lambda x: x.rsplit(" [", 1)[0],
+                    )
+                    _v7_lookup_submit = st.form_submit_button(
+                        "기준 시점 데이터 보기",
+                        use_container_width=True,
+                    )
+
+                if _v7_lookup_submit:
+                    st.session_state.v72_v7_applied_video_id = (
+                        _v7_result_lookup[_v7_selected_input].get("video_id")
+                    )
+            else:
+                st.info("검색 조건에 맞는 영상이 없습니다.")
 
             _v7_video = next(
                 v for _, v in _v7_recent_videos
@@ -5804,11 +6091,42 @@ if page == "📈 성장 분석":
                 _valid_saved_curves = _default_curves
                 st.session_state.v72_curve_applied_videos = _valid_saved_curves
 
+            if "v77_curve_search_text" not in st.session_state:
+                st.session_state.v77_curve_search_text = ""
+
+            with st.form("v77_curve_search_form"):
+                _curve_search_input = st.text_input(
+                    "비교 영상 검색",
+                    value=st.session_state.v77_curve_search_text,
+                    placeholder="제목 일부 입력 → 후보를 먼저 줄입니다",
+                )
+                _curve_search_submit = st.form_submit_button(
+                    "후보 검색",
+                    use_container_width=True,
+                )
+
+            if _curve_search_submit:
+                st.session_state.v77_curve_search_text = _curve_search_input.strip()
+
+            _curve_needle = st.session_state.v77_curve_search_text.lower().strip()
+            _curve_filtered_options = [
+                label for label in _curve_options
+                if not _curve_needle or _curve_needle in label.lower()
+            ][:100]
+
+            # 이미 선택된 영상은 검색 결과에서 빠져도 유지
+            for _saved in _valid_saved_curves:
+                if _saved not in _curve_filtered_options:
+                    _curve_filtered_options.insert(0, _saved)
+
             with st.form("v72_multi_curve_form"):
                 _selected_curves_input = st.multiselect(
-                    "비교할 영상",
-                    options=_curve_options,
-                    default=_valid_saved_curves,
+                    "비교할 영상 · 검색 결과 최대 100개",
+                    options=_curve_filtered_options,
+                    default=[
+                        x for x in _valid_saved_curves
+                        if x in _curve_filtered_options
+                    ],
                     max_selections=5,
                     key="v72_multi_growth_curve_input",
                 )
@@ -6090,17 +6408,45 @@ if page == "📈 성장 분석":
                 if item["video"].get("video_id") == st.session_state.v72_compare_applied_video_id
             )
 
+            if "v77_detail_search_text" not in st.session_state:
+                st.session_state.v77_detail_search_text = ""
+
+            with st.form("v77_detail_search_form"):
+                _detail_search_input = st.text_input(
+                    "상세 분석 영상 제목 검색",
+                    value=st.session_state.v77_detail_search_text,
+                    placeholder="제목 일부를 입력하세요",
+                )
+                _detail_search_submit = st.form_submit_button(
+                    "후보 검색",
+                    use_container_width=True,
+                )
+
+            if _detail_search_submit:
+                st.session_state.v77_detail_search_text = _detail_search_input.strip()
+
+            _detail_needle = st.session_state.v77_detail_search_text.lower().strip()
+            _detail_options = [
+                key for key in _option_labels
+                if (
+                    not _detail_needle
+                    or _detail_needle in key.rsplit(" [", 1)[0].lower()
+                )
+            ][:100]
+
+            if _detail_default_key not in _detail_options:
+                _detail_options.insert(0, _detail_default_key)
+
             with st.form("v72_compare_detail_form"):
                 _selected_key_input = st.selectbox(
-                    "상세 분석할 영상",
-                    options=_option_labels,
-                    index=_option_labels.index(_detail_default_key),
+                    "상세 분석할 영상 · 검색 결과 최대 100개",
+                    options=_detail_options,
+                    index=_detail_options.index(_detail_default_key),
                     format_func=lambda x: x.rsplit(" [", 1)[0],
                     key="v72_compare_selected_video_input",
                 )
                 _detail_submit = st.form_submit_button(
-                    "📊 선택한 영상 분석 보기",
-                    type="primary",
+                    "선택한 영상 분석 보기",
                     use_container_width=True,
                 )
 
