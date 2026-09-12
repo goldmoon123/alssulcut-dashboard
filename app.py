@@ -2477,17 +2477,77 @@ if page == "📈 성장 분석":
             return "계산 불가" if cur != 0 else "0%"
         return f"{((cur-prev)/abs(prev))*100:+.1f}%"
 
-    try:
-        trend_now = get_period_summary(yt_analytics, trend_start, trend_end)
-        trend_prev = get_period_summary(yt_analytics, trend_prev_start, trend_prev_end)
-        trend_daily_rows = get_daily_channel_data(yt_analytics, trend_start, trend_end)
-    except Exception as exc:
-        trend_now = None
-        trend_prev = None
-        trend_daily_rows = []
-        st.warning("채널 추세 데이터를 일부 불러오지 못했습니다.")
+    # 그래프 토글 등 Streamlit 재실행 때 같은 기간의 Analytics를 반복 호출하지 않도록
+    # session_state에 결과를 보관합니다. YouTube Analytics 500/backendError는
+    # 일시적일 수 있어 각 호출을 최대 2회 시도합니다.
+    def _trend_api_call_with_retry(callable_fn, *args):
+        last_exc = None
+        for attempt in range(2):
+            try:
+                return callable_fn(*args)
+            except Exception as exc:
+                last_exc = exc
+                err_text = str(exc)
+                is_backend = (
+                    "backendError" in err_text
+                    or "Internal error encountered" in err_text
+                    or "HttpError 500" in err_text
+                )
+                if not is_backend or attempt == 1:
+                    raise
+                time.sleep(1)
+        raise last_exc
+
+    _trend_cache_key = (
+        str(_snapshot_channel_id or "unknown"),
+        str(trend_start), str(trend_end),
+        str(trend_prev_start), str(trend_prev_end),
+    )
+    _trend_cache = st.session_state.get("growth_trend_cache_v652")
+
+    if _trend_cache and _trend_cache.get("key") == _trend_cache_key:
+        trend_now = _trend_cache.get("trend_now")
+        trend_prev = _trend_cache.get("trend_prev")
+        trend_daily_rows = _trend_cache.get("trend_daily_rows", [])
+        trend_error = None
+    else:
+        try:
+            trend_now = _trend_api_call_with_retry(
+                get_period_summary, yt_analytics, trend_start, trend_end
+            )
+            trend_prev = _trend_api_call_with_retry(
+                get_period_summary, yt_analytics, trend_prev_start, trend_prev_end
+            )
+            trend_daily_rows = _trend_api_call_with_retry(
+                get_daily_channel_data, yt_analytics, trend_start, trend_end
+            )
+            trend_error = None
+            st.session_state["growth_trend_cache_v652"] = {
+                "key": _trend_cache_key,
+                "trend_now": trend_now,
+                "trend_prev": trend_prev,
+                "trend_daily_rows": trend_daily_rows,
+            }
+        except Exception as exc:
+            trend_now = None
+            trend_prev = None
+            trend_daily_rows = []
+            trend_error = str(exc)
+
+    if trend_error:
+        if (
+            "backendError" in trend_error
+            or "Internal error encountered" in trend_error
+            or "HttpError 500" in trend_error
+        ):
+            st.warning(
+                "⚠️ YouTube Analytics 서버가 일시적으로 응답하지 않습니다. "
+                "자동으로 다시 시도했지만 아직 실패했습니다. 잠시 후 다시 확인해 주세요."
+            )
+        else:
+            st.warning("채널 추세 데이터를 일부 불러오지 못했습니다.")
         with st.expander("기술 오류 상세보기"):
-            st.code(str(exc))
+            st.code(trend_error)
 
     if trend_now and trend_prev:
         now_uploads = _count_uploads(trend_start, trend_end)
