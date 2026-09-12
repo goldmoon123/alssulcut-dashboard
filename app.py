@@ -2462,6 +2462,9 @@ if page == "📈 성장 분석":
     st.caption(f"🕒 데이터 조회 시각: {datetime.now(KST).strftime('%Y-%m-%d %H:%M KST')} · 최근 날짜의 Analytics는 지연될 수 있습니다.")
     st.caption(
         "원인을 추측하지 않고 실제 데이터와 내 채널 기준선만 비교합니다. "
+        "성장상태 · 급상승/재상승 · 동일 나이 순위 · 여러 영상 성장곡선을 함께 확인합니다."
+    )
+    st.caption(
         "조회수 100회 이상 + 영상별 Analytics가 집계된 공개 영상만 분석합니다."
     )
 
@@ -2857,12 +2860,16 @@ if page == "📈 성장 분석":
             median = float(pd.Series(values).median())
             rank = 1 + sum(1 for _, val in peers if val > current_value)
 
+            sample = len(peers)
+            top_percent = (rank / sample) * 100 if sample else None
+
             return {
                 "milestone": milestone,
                 "value": current_value,
                 "median": median,
                 "rank": rank,
-                "sample": len(peers),
+                "sample": sample,
+                "top_percent": top_percent,
             }
 
         def _daily_analytics_trend(video):
@@ -2924,6 +2931,66 @@ if page == "📈 성장 분석":
 
             return "high" if value > base else "low"
 
+        # ---------------------------------------------------------
+        # V6.5 통합 — 다중 성장곡선 비교
+        # ---------------------------------------------------------
+        with st.expander("📉 여러 영상 성장곡선 비교", expanded=False):
+            st.caption(
+                "YouTube Analytics의 D+N 누적 조회수를 같은 축에서 비교합니다. "
+                "최대 5개 영상까지 선택할 수 있습니다."
+            )
+
+            _curve_options = []
+            _curve_lookup = {}
+            for _idx, _video in enumerate(ordered, start=1):
+                _label = f"{_idx}. {_video['title'][:55]}"
+                _curve_options.append(_label)
+                _curve_lookup[_label] = _video
+
+            _default_curves = _curve_options[: min(3, len(_curve_options))]
+            _selected_curves = st.multiselect(
+                "비교할 영상",
+                options=_curve_options,
+                default=_default_curves,
+                max_selections=5,
+                key="v65_multi_growth_curve_select",
+            )
+            _curve_days = st.selectbox(
+                "비교 구간",
+                [7, 14, 28],
+                index=2,
+                format_func=lambda x: f"D+0 ~ D+{x}",
+                key="v65_multi_growth_curve_days",
+            )
+
+            _multi_rows = {}
+            for _label in _selected_curves:
+                _video = _curve_lookup[_label]
+                _series = growth_cache.get(_video.get("video_id"), [])
+                if not _series:
+                    continue
+
+                _short_label = _label if len(_label) <= 34 else _label[:31] + "..."
+                for _point in _series:
+                    _d = int(_point["D"])
+                    if _d > _curve_days:
+                        break
+                    _multi_rows.setdefault(_d, {})[_short_label] = _point["cumulative_views"]
+
+            if _multi_rows:
+                _multi_df = pd.DataFrame.from_dict(_multi_rows, orient="index").sort_index()
+                _multi_df.index = [f"D+{int(x)}" for x in _multi_df.index]
+                _multi_df.index.name = "업로드 후"
+                st.line_chart(_multi_df, use_container_width=True, height=320)
+                st.caption(
+                    "※ 영상마다 집계 가능한 마지막 D+N 시점이 다를 수 있어 "
+                    "뒤쪽 구간은 일부 선이 먼저 끝날 수 있습니다."
+                )
+            else:
+                st.caption("⏳ 선택한 영상의 일별 성장 데이터가 아직 충분하지 않습니다.")
+
+        st.divider()
+
         for rank,v in enumerate(ordered,start=1):
             published_text = "업로드일 확인 불가"
             age_text = ""
@@ -2958,11 +3025,13 @@ if page == "📈 성장 분석":
             _event_text = f" | {_snapshot_event['label']}" if _snapshot_event.get("label") else ""
 
             if _comp and _comp["sample"] >= 5:
+                _top_pct = _comp.get("top_percent")
+                _top_text = f" · 상위 {_top_pct:.1f}%" if _top_pct is not None else ""
                 _same_age_text = (
-                    f"D+{_comp['milestone']} {_comp['rank']}위/{_comp['sample']}개"
+                    f"D+{_comp['milestone']} {_comp['rank']}위/{_comp['sample']}개{_top_text}"
                 )
             elif _comp:
-                _same_age_text = f"⏳ 비교 데이터 부족({_comp['sample']}개)"
+                _same_age_text = f"⏳ 비교 데이터 부족 · {_comp['sample']}개"
             else:
                 _same_age_text = "⏳ 성장 데이터 집계 중"
 
@@ -3089,9 +3158,15 @@ if page == "📈 성장 분석":
                                 if _median_diff is None
                                 else f"{_median_diff:+.1f}%"
                             )
+                            _top_pct = _comp.get("top_percent")
+                            _top_text = (
+                                f" · 상위 {_top_pct:.1f}%"
+                                if _top_pct is not None
+                                else ""
+                            )
                             st.write(
                                 f"**D+{_comp['milestone']} 동일 시점:** "
-                                f"{_comp['rank']}위 / {_comp['sample']}개 · "
+                                f"{_comp['rank']}위 / {_comp['sample']}개{_top_text} · "
                                 f"채널 중앙값 {_comp['median']:,.0f}회 · "
                                 f"중앙값 대비 {_diff_text}"
                             )
