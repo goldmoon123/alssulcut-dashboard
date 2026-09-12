@@ -205,11 +205,15 @@ def _group_snapshot_rows(rows, allowed_video_ids=None):
             continue
         try:
             view_count = int(row.get("view_count") or 0)
+            like_count = int(row.get("like_count") or 0)
+            comment_count = int(row.get("comment_count") or 0)
         except Exception:
             continue
         grouped.setdefault(video_id, []).append({
             "captured_at": captured_at,
             "view_count": view_count,
+            "like_count": like_count,
+            "comment_count": comment_count,
         })
 
     for video_id in grouped:
@@ -2098,8 +2102,8 @@ if page == "🏠 홈" and show_home_details:
         "🕘 과거 일별 분석"
     )
 
-    # 최근 일별 Analytics는 지연될 수 있으므로 D-2까지만 허용
-    _detail_max_day = today - timedelta(days=2)
+    # 최근 날짜는 Analytics가 늦더라도 스냅샷 임시값으로 먼저 확인할 수 있으므로 오늘까지 허용
+    _detail_max_day = today
 
     # 달력/이전 세션에 오늘·어제 값이 남아 있어도
     # date_input의 최대값을 넘지 않도록 모두 안전하게 보정
@@ -2145,215 +2149,374 @@ if page == "🏠 홈" and show_home_details:
     is_recent_detail = 0 <= detail_age_days <= 2
     if is_recent_detail:
         st.warning(
-            "⏳ 최근 날짜의 YouTube Analytics 데이터는 아직 집계 중일 수 있습니다. "
-            "아래 일별 수치가 0으로 보여도 실제 0이라고 단정할 수 없습니다. "
-            "영상 아래의 '현재 조회수'는 누적값이고, 여기의 '그날 조회수'는 날짜별 Analytics 값입니다."
+            "⏳ 최근 날짜의 YouTube Analytics는 아직 집계 중일 수 있습니다. "
+            "확정값이 없으면 Shorts Scope 스냅샷으로 계산 가능한 조회수·좋아요를 ⚡ 임시값으로 먼저 표시합니다. "
+            "순구독자와 시청시간은 Analytics 확정 전까지 집계 중으로 표시합니다."
         )
 
 
+    # ---------------------------------------------------------
+    # V6.6.2 — 최근 날짜: Analytics 우선 + 스냅샷 임시값 fallback
+    # ---------------------------------------------------------
     try:
+        day_summary = get_period_summary(
+            yt_analytics,
+            selected_day,
+            selected_day,
+        )
+        day_summary_error = None
+    except Exception as e:
+        day_summary = None
+        day_summary_error = str(e)
 
-        day_summary = (
-            get_period_summary(
+    _recent_all_zero = bool(
+        is_recent_detail
+        and day_summary
+        and day_summary.get("views", 0) == 0
+        and day_summary.get("watch_minutes", 0) == 0
+        and day_summary.get("likes", 0) == 0
+        and day_summary.get("net_subscribers", 0) == 0
+    )
+
+    _snapshot_day = {
+        "ok": False,
+        "reason": "not_needed",
+        "views": None,
+        "likes": None,
+        "comments": None,
+        "new_video_views": None,
+        "old_video_views": None,
+        "video_rows": [],
+        "coverage": 0,
+        "partial": False,
+        "start_at": None,
+        "end_at": None,
+    }
+
+    if is_recent_detail and (day_summary is None or _recent_all_zero):
+        try:
+            _day_channel_id = _connected_youtube_channel_id(youtube)
+
+            _day_start_kst = datetime.combine(
+                selected_day,
+                datetime.min.time(),
+                tzinfo=KST,
+            )
+            _day_next_kst = _day_start_kst + timedelta(days=1)
+            _now_kst = datetime.now(KST)
+            _day_end_kst = min(_day_next_kst, _now_kst)
+
+            _fetch_since_utc = (
+                _day_start_kst.astimezone(timezone.utc) - timedelta(hours=2)
+            ).isoformat()
+
+            _day_snapshot_fetch = _fetch_channel_snapshots(
+                _day_channel_id,
+                _fetch_since_utc,
+            )
+
+            if _day_snapshot_fetch.get("ok"):
+                _all_grouped = _group_snapshot_rows(
+                    _day_snapshot_fetch.get("rows", []),
+                    [v.get("video_id") for v in public_videos],
+                )
+
+                _start_target = _day_start_kst.astimezone(timezone.utc)
+                _end_target = _day_end_kst.astimezone(timezone.utc)
+                _tolerance = timedelta(minutes=90)
+
+                def _nearest_snapshot(_rows, _target, _prefer_before=False):
+                    if not _rows:
+                        return None
+                    if _prefer_before:
+                        _before = [r for r in _rows if r["captured_at"] <= _target]
+                        if _before:
+                            _candidate = _before[-1]
+                            if (_target - _candidate["captured_at"]) <= _tolerance:
+                                return _candidate
+                    _candidate = min(
+                        _rows,
+                        key=lambda r: abs((r["captured_at"] - _target).total_seconds()),
+                    )
+                    if abs(_candidate["captured_at"] - _target) <= _tolerance:
+                        return _candidate
+                    return None
+
+                _snapshot_video_rows = []
+                _total_views = 0
+                _total_likes = 0
+                _total_comments = 0
+                _new_views = 0
+                _old_views = 0
+                _coverage = 0
+
+                for _video in public_videos:
+                    _vid = _video.get("video_id")
+                    _rows = _all_grouped.get(_vid, [])
+                    if not _rows:
+                        continue
+
+                    _published_dt = _parse_utc(_video.get("published_raw"))
+                    _published_kst = (
+                        _published_dt.astimezone(KST)
+                        if _published_dt else None
+                    )
+                    _uploaded_that_day = bool(
+                        _published_kst
+                        and _published_kst.date() == selected_day
+                    )
+
+                    _end_row = _nearest_snapshot(
+                        _rows,
+                        _end_target,
+                        _prefer_before=True,
+                    )
+                    if _end_row is None:
+                        continue
+
+                    if _uploaded_that_day:
+                        _start_views = 0
+                        _start_likes = 0
+                        _start_comments = 0
+                    else:
+                        _start_row = _nearest_snapshot(
+                            _rows,
+                            _start_target,
+                            _prefer_before=False,
+                        )
+                        if _start_row is None:
+                            continue
+                        _start_views = _start_row["view_count"]
+                        _start_likes = _start_row.get("like_count", 0)
+                        _start_comments = _start_row.get("comment_count", 0)
+
+                    _view_gain = max(_end_row["view_count"] - _start_views, 0)
+                    _like_gain = max(_end_row.get("like_count", 0) - _start_likes, 0)
+                    _comment_gain = max(_end_row.get("comment_count", 0) - _start_comments, 0)
+
+                    _total_views += _view_gain
+                    _total_likes += _like_gain
+                    _total_comments += _comment_gain
+                    _coverage += 1
+
+                    if _uploaded_that_day:
+                        _new_views += _view_gain
+                    else:
+                        _old_views += _view_gain
+
+                    _snapshot_video_rows.append({
+                        "video_id": _vid,
+                        "views": _view_gain,
+                        "likes": _like_gain,
+                        "comments": _comment_gain,
+                    })
+
+                _snapshot_video_rows.sort(
+                    key=lambda x: x["views"],
+                    reverse=True,
+                )
+
+                if _coverage > 0:
+                    _snapshot_day = {
+                        "ok": True,
+                        "reason": None,
+                        "views": _total_views,
+                        "likes": _total_likes,
+                        "comments": _total_comments,
+                        "new_video_views": _new_views,
+                        "old_video_views": _old_views,
+                        "video_rows": _snapshot_video_rows,
+                        "coverage": _coverage,
+                        "partial": selected_day == today,
+                        "start_at": _start_target,
+                        "end_at": _end_target,
+                    }
+                else:
+                    _snapshot_day["reason"] = "insufficient_boundary_data"
+            else:
+                _snapshot_day["reason"] = _day_snapshot_fetch.get("reason")
+        except Exception:
+            _snapshot_day["reason"] = "snapshot_error"
+
+    _analytics_confirmed = bool(day_summary and not _recent_all_zero)
+    _use_snapshot_day = bool(
+        not _analytics_confirmed
+        and _snapshot_day.get("ok")
+    )
+
+    st.subheader(f"📅 {selected_day}")
+
+    c1, c2, c3, c4 = st.columns(4)
+
+    if _analytics_confirmed:
+        c1.metric("그날 조회수", f"+{day_summary['views']:,}회")
+        c2.metric("그날 순구독자", f"{day_summary['net_subscribers']:+,}명")
+        c3.metric("그날 시청시간", format_watch_time(day_summary["watch_minutes"]))
+        c4.metric("그날 좋아요", f"+{day_summary['likes']:,}개")
+        st.caption("✅ YouTube Analytics 확정 데이터")
+
+    elif _use_snapshot_day:
+        c1.metric("그날 조회수", f"⚡ +{_snapshot_day['views']:,}회")
+        c2.metric("그날 순구독자", "⏳ 집계 중")
+        c3.metric("그날 시청시간", "⏳ 집계 중")
+        c4.metric("그날 좋아요", f"⚡ +{_snapshot_day['likes']:,}개")
+
+        if _snapshot_day.get("partial"):
+            st.info(
+                "⚡ 오늘 수치는 현재까지 쌓인 Shorts Scope 스냅샷 기준 임시값입니다. "
+                "YouTube Analytics가 확정되면 자동으로 확정값을 우선 표시합니다."
+            )
+        else:
+            st.info(
+                "⚡ 아직 YouTube Analytics가 확정되지 않아 Shorts Scope 스냅샷 기준 임시값을 표시합니다. "
+                "확정 Analytics가 들어오면 자동으로 교체됩니다."
+            )
+        st.caption(
+            f"스냅샷 계산 가능 영상 {_snapshot_day['coverage']}개 · "
+            "순구독자와 시청시간은 YouTube Analytics 확정 대기"
+        )
+
+    else:
+        c1.metric("그날 조회수", "⏳ 집계 중")
+        c2.metric("그날 순구독자", "⏳ 집계 중")
+        c3.metric("그날 시청시간", "⏳ 집계 중")
+        c4.metric("그날 좋아요", "⏳ 집계 중")
+        st.info(
+            "📌 아직 확정 Analytics가 없고, 이 날짜를 계산할 만큼 스냅샷 경계 데이터도 부족합니다. "
+            "스냅샷 수집이 계속되면 최근 날짜부터 임시값을 먼저 확인할 수 있습니다."
+        )
+
+    if day_summary_error:
+        with st.expander("기술 오류 상세보기"):
+            st.code(day_summary_error)
+
+    day_video_data = []
+    _day_video_source = None
+
+    if _analytics_confirmed:
+        try:
+            day_video_data = get_video_performance_for_day(
                 yt_analytics,
                 selected_day,
-                selected_day,
             )
-        )
-
-    except Exception as e:
-
-        if is_recent_detail:
-            st.warning(
-                "⏳ YouTube에서 이 날짜의 Analytics를 아직 집계 중이거나 "
-                "일시적으로 조회할 수 없습니다."
-            )
-        else:
-            st.error("선택 날짜 데이터를 가져오지 못했습니다.")
-
-        with st.expander("기술 오류 상세보기"):
-            st.code(str(e))
-
-        day_summary = None
-
-
-    if day_summary:
-
-        st.subheader(
-            f"📅 {selected_day}"
-        )
-
-        c1, c2, c3, c4 = (
-            st.columns(4)
-        )
-
-        _recent_all_zero = is_recent_detail and (
-            day_summary.get("views", 0) == 0
-            and day_summary.get("watch_minutes", 0) == 0
-            and day_summary.get("likes", 0) == 0
-            and day_summary.get("net_subscribers", 0) == 0
-        )
-
-        if _recent_all_zero:
-            c1.metric("그날 조회수", "⏳ 집계 중")
-            c2.metric("그날 순구독자", "⏳ 집계 중")
-            c3.metric("그날 시청시간", "⏳ 집계 중")
-            c4.metric("그날 좋아요", "⏳ 집계 중")
-            st.info(
-                "📌 최근 날짜라 아직 일별 Analytics가 확정되지 않았습니다. "
-                "아래 업로드 영상의 '현재 조회수'는 정상적으로 확인할 수 있습니다."
-            )
-        else:
-            c1.metric("그날 조회수", f"+{day_summary['views']:,}회")
-            c2.metric("그날 순구독자", f"{day_summary['net_subscribers']:+,}명")
-            c3.metric("그날 시청시간", format_watch_time(day_summary["watch_minutes"]))
-            c4.metric("그날 좋아요", f"+{day_summary['likes']:,}개")
-
-
-        # =====================================================
-        # 그날 영상별 성과
-        # =====================================================
-
-        try:
-
-            day_video_data = (
-                get_video_performance_for_day(
-                    yt_analytics,
-                    selected_day,
-                )
-            )
-
+            _day_video_source = "analytics"
         except Exception as e:
-
-            day_video_data = []
-
             st.warning(
-                "⏳ 그날의 영상별 Analytics가 아직 집계 중이거나 일시적으로 조회되지 않았습니다."
+                "⏳ 그날의 영상별 Analytics를 일시적으로 불러오지 못했습니다."
             )
-
             with st.expander("기술 오류 상세보기"):
                 st.code(str(e))
+    elif _use_snapshot_day:
+        day_video_data = _snapshot_day.get("video_rows", [])
+        _day_video_source = "snapshot"
 
+    video_lookup = {
+        video["video_id"]: video
+        for video in videos
+    }
 
-        video_lookup = {
+    uploaded_ids_for_day = set()
+    for video in public_videos:
+        published_raw = video.get("published_raw")
+        if not published_raw:
+            continue
+        try:
+            published_dt = datetime.fromisoformat(
+                published_raw.replace("Z", "+00:00")
+            ).astimezone(KST)
+            if published_dt.date() == selected_day:
+                uploaded_ids_for_day.add(video["video_id"])
+        except Exception:
+            pass
 
-            video["video_id"]:
-                video
-
-            for video in videos
-        }
-
-        # 당일 업로드 영상 vs 기존 영상 조회수 기여도
-        uploaded_ids_for_day = set()
-        for video in public_videos:
-            published_raw = video.get("published_raw")
-            if not published_raw:
-                continue
-            try:
-                published_dt = datetime.fromisoformat(
-                    published_raw.replace("Z", "+00:00")
-                ).astimezone(KST)
-                if published_dt.date() == selected_day:
-                    uploaded_ids_for_day.add(video["video_id"])
-            except Exception:
-                pass
-
+    if _analytics_confirmed:
         new_video_views = sum(
             item["views"] for item in day_video_data
             if item["video_id"] in uploaded_ids_for_day
         )
-        old_video_views = max(day_summary["views"] - new_video_views, 0)
-
-        st.subheader("🧩 그날 조회수 구성")
-
         day_total_views = max(day_summary["views"], 0)
+        old_video_views = max(day_total_views - new_video_views, 0)
+    elif _use_snapshot_day:
+        new_video_views = int(_snapshot_day.get("new_video_views") or 0)
+        old_video_views = int(_snapshot_day.get("old_video_views") or 0)
+        day_total_views = new_video_views + old_video_views
+    else:
+        new_video_views = 0
+        old_video_views = 0
+        day_total_views = 0
 
-        if day_total_views > 0:
-            new_video_share = (new_video_views / day_total_views) * 100
-            old_video_share = (old_video_views / day_total_views) * 100
-        else:
-            new_video_share = 0.0
-            old_video_share = 0.0
+    st.subheader("🧩 그날 조회수 구성")
 
-        cc1, cc2 = st.columns(2)
+    if day_total_views > 0:
+        new_video_share = (new_video_views / day_total_views) * 100
+        old_video_share = (old_video_views / day_total_views) * 100
+    else:
+        new_video_share = 0.0
+        old_video_share = 0.0
 
-        if is_recent_detail and day_total_views == 0:
-            cc1.metric("당일 업로드 영상", "⏳ 집계 중")
-            cc2.metric("기존 영상", "⏳ 집계 중")
-            st.info(
-                "📌 조회수 구성도 아직 집계 중입니다. "
-                "오늘 업로드 영상의 실제 누적 조회수는 아래에서 확인하세요."
+    cc1, cc2 = st.columns(2)
+
+    if day_total_views > 0:
+        _prefix = "⚡ " if _use_snapshot_day else ""
+        cc1.metric(
+            "당일 업로드 영상",
+            f"{_prefix}{new_video_views:,}회",
+            f"{new_video_share:.1f}% 기여",
+        )
+        cc2.metric(
+            "기존 영상",
+            f"{_prefix}{old_video_views:,}회",
+            f"{old_video_share:.1f}% 기여",
+        )
+        if _use_snapshot_day:
+            st.caption("⚡ 스냅샷 기준 임시 조회수 구성")
+    else:
+        cc1.metric("당일 업로드 영상", "⏳ 집계 중")
+        cc2.metric("기존 영상", "⏳ 집계 중")
+        st.info(
+            "📌 조회수 구성도 아직 계산할 데이터가 부족합니다."
+        )
+
+    if day_video_data:
+        st.subheader("🔥 그날 조회수를 만든 영상")
+
+        if _day_video_source == "snapshot":
+            st.caption(
+                "⚡ 아래 순위는 Shorts Scope 스냅샷 기준 임시값입니다. "
+                "Analytics 확정 후 공식 일별 값이 우선 표시됩니다."
             )
-        else:
-            cc1.metric(
-                "당일 업로드 영상",
-                f"{new_video_views:,}회",
-                f"{new_video_share:.1f}% 기여",
-            )
-            cc2.metric(
-                "기존 영상",
-                f"{old_video_views:,}회",
-                f"{old_video_share:.1f}% 기여",
-            )
 
+        for rank, performance in enumerate(
+            day_video_data[:5],
+            start=1,
+        ):
+            video = video_lookup.get(performance["video_id"])
+            if not video:
+                continue
 
-        if day_video_data:
+            col_img, col_info = st.columns([1, 5])
 
-            st.subheader(
-                "🔥 그날 조회수를 만든 영상"
-            )
+            with col_img:
+                if video["thumbnail"]:
+                    st.image(video["thumbnail"], width=140)
 
-            for rank, performance in enumerate(
-                day_video_data[:5],
-                start=1,
-            ):
+            with col_info:
+                st.markdown(f"### {rank}위 · {video['title']}")
 
-                video = video_lookup.get(
-                    performance["video_id"]
-                )
-
-                if not video:
-                    continue
-
-                col_img, col_info = (
-                    st.columns(
-                        [1, 5]
-                    )
-                )
-
-                with col_img:
-
-                    if video[
-                        "thumbnail"
-                    ]:
-
-                        st.image(
-                            video[
-                                "thumbnail"
-                            ],
-                            width=140
-                        )
-
-
-                with col_info:
-
-                    st.markdown(
-                        f"### {rank}위 · "
-                        f"{video['title']}"
-                    )
-
+                if _day_video_source == "analytics":
                     st.write(
-                        f"👁️ 그날 "
-                        f"+{performance['views']:,}회"
-                        f"  |  "
-                        f"👍 "
-                        f"+{performance['likes']:,}"
-                        f"  |  "
-                        f"👤 "
-                        f"{performance['net_subscribers']:+d}"
+                        f"👁️ 그날 +{performance['views']:,}회"
+                        f"  |  👍 +{performance['likes']:,}"
+                        f"  |  👤 {performance['net_subscribers']:+d}"
+                    )
+                else:
+                    st.write(
+                        f"⚡ 조회수 +{performance['views']:,}회"
+                        f"  |  👍 +{performance.get('likes', 0):,}"
+                        f"  |  💬 +{performance.get('comments', 0):,}"
                     )
 
-            st.divider()
+        st.divider()
 
 
     # =========================================================
