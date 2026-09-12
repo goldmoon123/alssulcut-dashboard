@@ -1118,14 +1118,10 @@ if (
     except Exception as e:
 
         st.error(
-            "Google 로그인 처리 중 "
-            "오류가 발생했습니다."
+            "Google 로그인 처리 중 오류가 발생했습니다."
         )
-
-        st.code(
-            str(e)
-        )
-
+        with st.expander("기술 오류 상세보기"):
+            st.code(str(e))
         st.stop()
 
 
@@ -1223,14 +1219,9 @@ try:
 
 except Exception as e:
 
-    st.error(
-        "YouTube API 연결 실패"
-    )
-
-    st.code(
-        str(e)
-    )
-
+    st.error("YouTube API 연결 실패")
+    with st.expander("기술 오류 상세보기"):
+        st.code(str(e))
     st.stop()
 
 
@@ -1285,14 +1276,9 @@ try:
 
 except Exception as e:
 
-    st.error(
-        "YouTube 데이터를 가져오지 못했습니다."
-    )
-
-    st.code(
-        str(e)
-    )
-
+    st.error("YouTube 데이터를 가져오지 못했습니다.")
+    with st.expander("기술 오류 상세보기"):
+        st.code(str(e))
     st.stop()
 
 
@@ -2013,13 +1999,9 @@ if page == "🏠 홈" and show_home_details:
 
         daily_data = []
 
-        st.warning(
-            "일별 데이터를 불러오지 못했습니다."
-        )
-
-        st.code(
-            str(e)
-        )
+        st.warning("일별 데이터를 불러오지 못했습니다.")
+        with st.expander("기술 오류 상세보기"):
+            st.code(str(e))
 
 
     if daily_data:
